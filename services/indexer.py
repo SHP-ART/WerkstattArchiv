@@ -36,15 +36,35 @@ class DocumentIndex:
                 dateiname TEXT NOT NULL,
                 original_pfad TEXT,
                 ziel_pfad TEXT NOT NULL,
-                kunden_nr TEXT,
-                kunden_name TEXT,
+                
+                -- Auftragsdaten
                 auftrag_nr TEXT,
+                auftragsdatum TEXT,
                 dokument_typ TEXT,
                 jahr INTEGER,
+                
+                -- Kundendaten
+                kunden_nr TEXT,
+                kunden_name TEXT,
+                
+                -- Fahrzeugdaten (NEU)
+                fin TEXT,
+                kennzeichen TEXT,
+                kilometerstand INTEGER,
+                
+                -- Legacy-Informationen
+                is_legacy INTEGER DEFAULT 0,
+                match_reason TEXT,
+                
+                -- Qualität & Status
                 confidence REAL,
-                verarbeitet_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 status TEXT,
-                hinweis TEXT
+                hinweis TEXT,
+                
+                -- Zeitstempel
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verarbeitet_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
@@ -69,6 +89,9 @@ class DocumentIndex:
                 status TEXT DEFAULT 'offen'
             )
         """)
+        
+        # Migration: Füge neue Spalten hinzu falls sie nicht existieren
+        self._migrate_database(cursor)
         
         # Index für schnellere Suchen
         cursor.execute("""
@@ -110,6 +133,38 @@ class DocumentIndex:
         conn.commit()
         conn.close()
     
+    def _migrate_database(self, cursor: sqlite3.Cursor) -> None:
+        """
+        Migriert bestehende Datenbank auf neues Schema.
+        Fügt neue Spalten hinzu falls sie nicht existieren.
+        """
+        # Prüfe ob neue Spalten bereits existieren
+        cursor.execute("PRAGMA table_info(dokumente)")
+        columns = {row[1] for row in cursor.fetchall()}
+        
+        # Neue Spalten die hinzugefügt werden sollen
+        new_columns = {
+            "fin": "TEXT",
+            "kennzeichen": "TEXT",
+            "kilometerstand": "INTEGER",
+            "is_legacy": "INTEGER DEFAULT 0",
+            "match_reason": "TEXT",
+            "auftragsdatum": "TEXT",
+            "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "last_update": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        }
+        
+        # Füge fehlende Spalten hinzu
+        for col_name, col_type in new_columns.items():
+            if col_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE dokumente ADD COLUMN {col_name} {col_type}")
+                    print(f"✓ Spalte '{col_name}' zur Datenbank hinzugefügt")
+                except sqlite3.OperationalError as e:
+                    # Spalte existiert bereits oder anderer Fehler
+                    if "duplicate column" not in str(e).lower():
+                        print(f"Hinweis beim Hinzufügen von '{col_name}': {e}")
+    
     def add_document(self, original_path: str, target_path: str, 
                     metadata: Dict[str, Any], status: str = "success") -> int:
         """
@@ -118,7 +173,7 @@ class DocumentIndex:
         Args:
             original_path: Ursprünglicher Dateipfad
             target_path: Zielpfad nach Verarbeitung
-            metadata: Metadaten des Dokuments
+            metadata: Metadaten des Dokuments (inkl. fin, kennzeichen, kilometerstand, etc.)
             status: Status (success, unclear, error)
             
         Returns:
@@ -129,18 +184,29 @@ class DocumentIndex:
         
         cursor.execute("""
             INSERT INTO dokumente 
-            (dateiname, original_pfad, ziel_pfad, kunden_nr, kunden_name, 
-             auftrag_nr, dokument_typ, jahr, confidence, status, hinweis)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (dateiname, original_pfad, ziel_pfad, 
+             auftrag_nr, auftragsdatum, dokument_typ, jahr,
+             kunden_nr, kunden_name, 
+             fin, kennzeichen, kilometerstand,
+             is_legacy, match_reason,
+             confidence, status, hinweis,
+             created_at, last_update)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (
             os.path.basename(target_path),
             original_path,
             target_path,
-            metadata.get("kunden_nr"),
-            metadata.get("kunden_name"),
             metadata.get("auftrag_nr"),
+            metadata.get("auftragsdatum"),
             metadata.get("dokument_typ"),
             metadata.get("jahr"),
+            metadata.get("kunden_nr"),
+            metadata.get("kunden_name"),
+            metadata.get("fin"),
+            metadata.get("kennzeichen"),
+            metadata.get("kilometerstand"),
+            1 if metadata.get("is_legacy") else 0,
+            metadata.get("legacy_match_reason") or metadata.get("match_reason"),
             metadata.get("confidence"),
             status,
             metadata.get("hinweis")
@@ -151,6 +217,39 @@ class DocumentIndex:
         conn.close()
         
         return doc_id
+    
+    def update_file_path(self, doc_id: int, new_path: str) -> bool:
+        """
+        Aktualisiert den Dateipfad eines Dokuments.
+        
+        Args:
+            doc_id: ID des Dokuments
+            new_path: Neuer Dateipfad
+            
+        Returns:
+            True bei Erfolg, False bei Fehler
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE dokumente 
+                SET ziel_pfad = ?,
+                    dateiname = ?,
+                    last_update = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (new_path, os.path.basename(new_path), doc_id))
+            
+            conn.commit()
+            success = cursor.rowcount > 0
+        except Exception as e:
+            print(f"Fehler beim Aktualisieren des Dateipfads: {e}")
+            success = False
+        finally:
+            conn.close()
+        
+        return success
     
     def search(self, kunden_nr: Optional[str] = None, 
               auftrag_nr: Optional[str] = None,
@@ -215,15 +314,23 @@ class DocumentIndex:
                 "dateiname": row["dateiname"],
                 "original_pfad": row["original_pfad"],
                 "ziel_pfad": row["ziel_pfad"],
-                "kunden_nr": row["kunden_nr"],
-                "kunden_name": row["kunden_name"],
                 "auftrag_nr": row["auftrag_nr"],
+                "auftragsdatum": row.get("auftragsdatum"),
                 "dokument_typ": row["dokument_typ"],
                 "jahr": row["jahr"],
+                "kunden_nr": row["kunden_nr"],
+                "kunden_name": row["kunden_name"],
+                "fin": row.get("fin"),
+                "kennzeichen": row.get("kennzeichen"),
+                "kilometerstand": row.get("kilometerstand"),
+                "is_legacy": bool(row.get("is_legacy")),
+                "match_reason": row.get("match_reason"),
                 "confidence": row["confidence"],
-                "verarbeitet_am": row["verarbeitet_am"],
                 "status": row["status"],
                 "hinweis": row["hinweis"],
+                "verarbeitet_am": row["verarbeitet_am"],
+                "created_at": row.get("created_at"),
+                "last_update": row.get("last_update"),
             })
         
         conn.close()
@@ -313,6 +420,91 @@ class DocumentIndex:
         conn.close()
         
         return years
+    
+    def search_by_fin(self, fin: str) -> List[Dict[str, Any]]:
+        """
+        Sucht alle Dokumente zu einer bestimmten FIN.
+        
+        Args:
+            fin: Fahrzeug-Identifikationsnummer
+            
+        Returns:
+            Liste von Dokumenten
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM dokumente 
+            WHERE fin = ? 
+            ORDER BY verarbeitet_am DESC
+        """, (fin,))
+        
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
+        conn.close()
+        
+        return results
+    
+    def search_by_kennzeichen(self, kennzeichen: str) -> List[Dict[str, Any]]:
+        """
+        Sucht alle Dokumente zu einem bestimmten Kennzeichen.
+        
+        Args:
+            kennzeichen: KFZ-Kennzeichen
+            
+        Returns:
+            Liste von Dokumenten
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM dokumente 
+            WHERE kennzeichen = ? 
+            ORDER BY verarbeitet_am DESC
+        """, (kennzeichen,))
+        
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
+        conn.close()
+        
+        return results
+    
+    def get_legacy_documents(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Holt alle Legacy-Dokumente.
+        
+        Args:
+            status: Optional - Filter nach Status ("success", "unclear")
+            
+        Returns:
+            Liste von Legacy-Dokumenten
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if status:
+            cursor.execute("""
+                SELECT * FROM dokumente 
+                WHERE is_legacy = 1 AND status = ?
+                ORDER BY verarbeitet_am DESC
+            """, (status,))
+        else:
+            cursor.execute("""
+                SELECT * FROM dokumente 
+                WHERE is_legacy = 1 
+                ORDER BY verarbeitet_am DESC
+            """)
+        
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
+        conn.close()
+        
+        return results
     
     def add_unclear_legacy(self, file_path: str, metadata: Dict[str, Any]) -> int:
         """

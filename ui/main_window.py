@@ -16,6 +16,14 @@ from services.router import process_document
 from services.logger import log_success, log_unclear, log_error
 from services.indexer import DocumentIndex
 from services.vorlagen import VorlagenManager
+from services.pattern_manager import PatternManager
+
+try:
+    from services.watchdog_service import WatchdogService
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    print("⚠️  watchdog nicht installiert. Auto-Watch nicht verfügbar.")
 
 
 class MainWindow(ctk.CTk):
@@ -36,17 +44,47 @@ class MainWindow(ctk.CTk):
         self.unclear_documents: List[Dict[str, Any]] = []
         self.document_index = DocumentIndex()
         self.vorlagen_manager = VorlagenManager()
+        self.pattern_manager = PatternManager()
+        self.watchdog_observer = None
+        
+        # Tab-Erstellungs-Flags (Lazy Loading)
+        self.tabs_created = {
+            "Einstellungen": False,
+            "Verarbeitung": False,
+            "Suche": False,
+            "Unklare Dokumente": False,
+            "Unklare Legacy-Aufträge": False,
+            "Regex-Patterns": False
+        }
+        
+        # Daten-Lade-Flags (für Refresh)
+        self.tabs_data_loaded = {
+            "Suche": False,
+            "Unklare Legacy-Aufträge": False
+        }
+        
+        # Version importieren
+        try:
+            from version import __version__, __app_name__
+            self.version = __version__
+            self.app_name = __app_name__
+        except ImportError:
+            self.version = "0.8.0"
+            self.app_name = "WerkstattArchiv"
         
         # Fenster-Konfiguration
-        self.title("WerkstattArchiv")
+        self.title(f"{self.app_name} v{self.version}")
         self.geometry("1200x700")
+        
+        # Schließen-Handler für Watchdog
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # Theme
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
         # Tabview erstellen
-        self.tabview = ctk.CTkTabview(self)
+        self.tabview = ctk.CTkTabview(self, command=self.on_tab_change)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Tabs hinzufügen
@@ -55,13 +93,54 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Suche")
         self.tabview.add("Unklare Dokumente")
         self.tabview.add("Unklare Legacy-Aufträge")
+        self.tabview.add("Regex-Patterns")
         
-        # Tab-Inhalte erstellen
+        # Nur die wichtigsten Tabs sofort erstellen (Einstellungen + Verarbeitung)
         self.create_settings_tab()
         self.create_processing_tab()
-        self.create_search_tab()
-        self.create_unclear_tab()
-        self.create_unclear_legacy_tab()
+        self.tabs_created["Einstellungen"] = True
+        self.tabs_created["Verarbeitung"] = True
+    
+    def on_tab_change(self):
+        """Wird aufgerufen wenn ein Tab gewechselt wird (Lazy Loading)."""
+        current_tab = self.tabview.get()
+        
+        # Tab erstellen wenn noch nicht vorhanden
+        if not self.tabs_created.get(current_tab, False):
+            if current_tab == "Suche":
+                self.create_search_tab()
+                self.tabs_created["Suche"] = True
+            elif current_tab == "Unklare Dokumente":
+                self.create_unclear_tab()
+                self.tabs_created["Unklare Dokumente"] = True
+            elif current_tab == "Unklare Legacy-Aufträge":
+                self.create_unclear_legacy_tab()
+                self.tabs_created["Unklare Legacy-Aufträge"] = True
+            elif current_tab == "Regex-Patterns":
+                self.create_patterns_tab()
+                self.tabs_created["Regex-Patterns"] = True
+        
+        # Daten laden wenn Tab bereits erstellt aber Daten noch nicht geladen
+        if current_tab == "Suche" and not self.tabs_data_loaded["Suche"]:
+            # Lade Dokumenttypen und Jahre asynchron
+            def load_search_data():
+                doc_types = ["Alle"] + self.document_index.get_all_document_types()
+                years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+                
+                # Update GUI im Haupt-Thread
+                self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
+                self.after(0, lambda: self.search_jahr.configure(values=years))
+            
+            # Starte in Thread
+            thread = threading.Thread(target=load_search_data, daemon=True)
+            thread.start()
+            self.tabs_data_loaded["Suche"] = True
+        
+        elif current_tab == "Unklare Legacy-Aufträge" and not self.tabs_data_loaded["Unklare Legacy-Aufträge"]:
+            # Lade Legacy-Einträge asynchron
+            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+            thread = threading.Thread(target=self.load_unclear_legacy_entries, daemon=True)
+            thread.start()
     
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
@@ -117,10 +196,79 @@ class MainWindow(ctk.CTk):
         # Status-Label
         self.settings_status = ctk.CTkLabel(settings_frame, text="")
         self.settings_status.pack(pady=5)
+        
+        # Separator
+        separator = ctk.CTkFrame(settings_frame, height=2, fg_color="gray")
+        separator.pack(fill="x", padx=20, pady=20)
+        
+        # Backup-Bereich
+        backup_title = ctk.CTkLabel(settings_frame, text="💾 Backup & Wiederherstellung", 
+                                    font=ctk.CTkFont(size=18, weight="bold"))
+        backup_title.pack(pady=10)
+        
+        backup_info = ctk.CTkLabel(
+            settings_frame, 
+            text="Sichere alle wichtigen Daten: Konfiguration, Kundendatenbank, Index-Datenbank, Fahrzeug-Index",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        backup_info.pack(pady=5)
+        
+        backup_buttons_frame = ctk.CTkFrame(settings_frame)
+        backup_buttons_frame.pack(pady=10)
+        
+        create_backup_btn = ctk.CTkButton(
+            backup_buttons_frame, 
+            text="📦 Backup erstellen",
+            command=self.create_backup,
+            width=200,
+            fg_color="green"
+        )
+        create_backup_btn.pack(side="left", padx=5)
+        
+        restore_backup_btn = ctk.CTkButton(
+            backup_buttons_frame, 
+            text="♻️ Backup wiederherstellen",
+            command=self.restore_backup,
+            width=200,
+            fg_color="orange"
+        )
+        restore_backup_btn.pack(side="left", padx=5)
+        
+        manage_backups_btn = ctk.CTkButton(
+            backup_buttons_frame, 
+            text="📋 Backups verwalten",
+            command=self.manage_backups,
+            width=200
+        )
+        manage_backups_btn.pack(side="left", padx=5)
+        
+        # Backup-Status
+        self.backup_status = ctk.CTkLabel(settings_frame, text="")
+        self.backup_status.pack(pady=5)
     
     def create_processing_tab(self):
         """Erstellt den Verarbeitungs-Tab."""
         tab = self.tabview.tab("Verarbeitung")
+        
+        # Header mit Logo und Version
+        header_frame = ctk.CTkFrame(tab)
+        header_frame.pack(fill="x", padx=10, pady=10)
+        
+        app_title = ctk.CTkLabel(
+            header_frame, 
+            text=f"📁 {self.app_name}",
+            font=ctk.CTkFont(size=20, weight="bold")
+        )
+        app_title.pack(side="left", padx=10)
+        
+        version_label = ctk.CTkLabel(
+            header_frame, 
+            text=f"v{self.version}",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        version_label.pack(side="left", padx=5)
         
         # Control-Frame oben
         control_frame = ctk.CTkFrame(tab)
@@ -149,6 +297,17 @@ class MainWindow(ctk.CTk):
         scan_btn = ctk.CTkButton(control_frame, text="Eingangsordner scannen",
                                 command=self.scan_input_folder)
         scan_btn.pack(side="left", padx=10, pady=10)
+        
+        # Watchdog Controls (wenn verfügbar)
+        if WATCHDOG_AVAILABLE:
+            self.watch_btn = ctk.CTkButton(control_frame, text="🔍 Auto-Watch starten",
+                                          command=self.toggle_watchdog,
+                                          fg_color="green")
+            self.watch_btn.pack(side="left", padx=10, pady=10)
+            
+            self.watch_status = ctk.CTkLabel(control_frame, text="⚪ Gestoppt", 
+                                            font=ctk.CTkFont(size=11))
+            self.watch_status.pack(side="left", padx=5)
         
         self.process_status = ctk.CTkLabel(control_frame, text="Bereit")
         self.process_status.pack(side="left", padx=10)
@@ -213,15 +372,13 @@ class MainWindow(ctk.CTk):
         
         # Dokumenttyp
         ctk.CTkLabel(fields_frame, text="Typ:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.search_dokument_typ = ctk.CTkComboBox(fields_frame, width=150, 
-                                                    values=["Alle"] + self.document_index.get_all_document_types())
+        self.search_dokument_typ = ctk.CTkComboBox(fields_frame, width=150, values=["Alle"])
         self.search_dokument_typ.set("Alle")
         self.search_dokument_typ.grid(row=2, column=1, padx=5, pady=5)
         
         # Jahr
         ctk.CTkLabel(fields_frame, text="Jahr:").grid(row=2, column=2, padx=5, pady=5, sticky="w")
-        years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-        self.search_jahr = ctk.CTkComboBox(fields_frame, width=150, values=years)
+        self.search_jahr = ctk.CTkComboBox(fields_frame, width=150, values=["Alle"])
         self.search_jahr.set("Alle")
         self.search_jahr.grid(row=2, column=3, padx=5, pady=5)
         
@@ -345,8 +502,216 @@ class MainWindow(ctk.CTk):
         self.legacy_container = ctk.CTkFrame(self.legacy_scroll)
         self.legacy_container.pack(fill="both", expand=True)
         
-        # Initial laden
-        self.load_unclear_legacy_entries()
+        # Platzhalter bis zum ersten Laden
+        placeholder = ctk.CTkLabel(self.legacy_container, 
+                                  text="⏳ Daten werden beim ersten Öffnen geladen...",
+                                  font=ctk.CTkFont(size=12),
+                                  text_color="gray")
+        placeholder.pack(pady=20)
+    
+    def create_patterns_tab(self):
+        """Erstellt den Tab für Regex-Pattern Konfiguration."""
+        tab = self.tabview.tab("Regex-Patterns")
+        
+        # Header
+        header_frame = ctk.CTkFrame(tab)
+        header_frame.pack(fill="x", padx=10, pady=10)
+        
+        title_label = ctk.CTkLabel(header_frame, 
+                                   text="🔧 Regex-Pattern Konfiguration",
+                                   font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.pack(side="left", padx=10)
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(header_frame)
+        button_frame.pack(side="right", padx=10)
+        
+        save_btn = ctk.CTkButton(button_frame, text="💾 Speichern",
+                                command=self.save_patterns,
+                                width=120)
+        save_btn.pack(side="left", padx=5)
+        
+        reset_btn = ctk.CTkButton(button_frame, text="↺ Zurücksetzen",
+                                 command=self.reset_patterns,
+                                 width=120)
+        reset_btn.pack(side="left", padx=5)
+        
+        test_btn = ctk.CTkButton(button_frame, text="🧪 Pattern testen",
+                                command=self.test_pattern,
+                                width=120)
+        test_btn.pack(side="left", padx=5)
+        
+        self.pattern_status = ctk.CTkLabel(header_frame, text="")
+        self.pattern_status.pack(side="right", padx=10)
+        
+        # Info
+        info_frame = ctk.CTkFrame(tab)
+        info_frame.pack(fill="x", padx=10, pady=5)
+        
+        info_text = ("ℹ️ Hier können Sie die Regex-Patterns für die Dokumentenanalyse anpassen.\n"
+                    "   Regex-Gruppen mit () werden extrahiert. Änderungen wirken sofort bei der nächsten Verarbeitung.")
+        info_label = ctk.CTkLabel(info_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=11), justify="left")
+        info_label.pack(padx=10, pady=10)
+        
+        # Scrollable Frame für Pattern-Eingaben
+        scroll_frame = ctk.CTkScrollableFrame(tab)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Pattern-Eingabefelder erstellen
+        self.pattern_entries = {}
+        patterns = self.pattern_manager.get_all_patterns()
+        descriptions = self.pattern_manager.get_pattern_descriptions()
+        
+        # Nach Kategorien gruppieren
+        categories = {
+            "Stammdaten": ["kunden_nr", "auftrag_nr", "datum", "kunden_name"],
+            "Fahrzeugdaten": ["fin", "kennzeichen"],
+            "Adressdaten": ["plz", "strasse"],
+            "Dokumenttypen": ["rechnung", "kva", "auftrag", "hu", "garantie"]
+        }
+        
+        row = 0
+        for category, pattern_names in categories.items():
+            # Kategorie-Header
+            cat_label = ctk.CTkLabel(scroll_frame, text=f"▼ {category}",
+                                    font=ctk.CTkFont(size=14, weight="bold"))
+            cat_label.grid(row=row, column=0, columnspan=3, sticky="w", padx=10, pady=(15, 5))
+            row += 1
+            
+            # Pattern in dieser Kategorie
+            for name in pattern_names:
+                if name not in patterns:
+                    continue
+                
+                # Name
+                name_label = ctk.CTkLabel(scroll_frame, text=name,
+                                         font=ctk.CTkFont(size=11, weight="bold"),
+                                         width=150, anchor="w")
+                name_label.grid(row=row, column=0, padx=10, pady=5, sticky="w")
+                
+                # Pattern-Eingabe
+                entry = ctk.CTkEntry(scroll_frame, width=500)
+                entry.insert(0, patterns[name])
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+                self.pattern_entries[name] = entry
+                
+                # Beschreibung
+                desc_label = ctk.CTkLabel(scroll_frame, text=descriptions.get(name, ""),
+                                         font=ctk.CTkFont(size=10),
+                                         text_color="gray", anchor="w")
+                desc_label.grid(row=row, column=2, padx=10, pady=5, sticky="w")
+                
+                row += 1
+        
+        # Grid-Konfiguration
+        scroll_frame.grid_columnconfigure(1, weight=1)
+    
+    def save_patterns(self):
+        """Speichert die Regex-Patterns."""
+        invalid_patterns = []
+        
+        # Validierung
+        for name, entry in self.pattern_entries.items():
+            pattern = entry.get().strip()
+            if not self.pattern_manager.validate_pattern(pattern):
+                invalid_patterns.append(name)
+        
+        if invalid_patterns:
+            messagebox.showerror("Fehler", 
+                               f"Ungültige Regex-Patterns:\n" + "\n".join(invalid_patterns))
+            self.pattern_status.configure(text="✗ Ungültige Patterns", text_color="red")
+            return
+        
+        # Speichern
+        for name, entry in self.pattern_entries.items():
+            pattern = entry.get().strip()
+            self.pattern_manager.update_pattern(name, pattern)
+        
+        self.pattern_status.configure(text="✓ Patterns gespeichert", text_color="green")
+        messagebox.showinfo("Erfolg", "Regex-Patterns erfolgreich gespeichert!")
+    
+    def reset_patterns(self):
+        """Setzt alle Patterns auf Standardwerte zurück."""
+        if not messagebox.askyesno("Zurücksetzen", 
+                                   "Alle Patterns auf Standardwerte zurücksetzen?"):
+            return
+        
+        self.pattern_manager.reset_to_defaults()
+        
+        # GUI aktualisieren
+        patterns = self.pattern_manager.get_all_patterns()
+        for name, entry in self.pattern_entries.items():
+            if name in patterns:
+                entry.delete(0, "end")
+                entry.insert(0, patterns[name])
+        
+        self.pattern_status.configure(text="✓ Auf Standard zurückgesetzt", text_color="green")
+        messagebox.showinfo("Erfolg", "Patterns auf Standardwerte zurückgesetzt!")
+    
+    def test_pattern(self):
+        """Öffnet Dialog zum Testen eines Patterns."""
+        # Dialog erstellen
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Regex-Pattern testen")
+        dialog.geometry("700x500")
+        
+        # Pattern-Auswahl
+        pattern_frame = ctk.CTkFrame(dialog)
+        pattern_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(pattern_frame, text="Pattern:", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
+        
+        pattern_names = list(self.pattern_entries.keys())
+        pattern_selector = ctk.CTkComboBox(pattern_frame, values=pattern_names, width=300)
+        pattern_selector.set(pattern_names[0] if pattern_names else "")
+        pattern_selector.pack(fill="x", pady=5)
+        
+        # Testtext-Eingabe
+        text_frame = ctk.CTkFrame(dialog)
+        text_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        ctk.CTkLabel(text_frame, text="Testtext:", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
+        
+        test_textbox = ctk.CTkTextbox(text_frame, height=150)
+        test_textbox.pack(fill="both", expand=True, pady=5)
+        test_textbox.insert("1.0", "Beispiel:\nKunden-Nr.: 28307\nAuftragsnummer: 78708\nDatum: 15.03.2019")
+        
+        # Ergebnis-Anzeige
+        result_frame = ctk.CTkFrame(dialog)
+        result_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        ctk.CTkLabel(result_frame, text="Ergebnis:", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
+        
+        result_textbox = ctk.CTkTextbox(result_frame, height=100)
+        result_textbox.pack(fill="both", expand=True, pady=5)
+        
+        def run_test():
+            selected_name = pattern_selector.get()
+            if selected_name not in self.pattern_entries:
+                result_textbox.delete("1.0", "end")
+                result_textbox.insert("1.0", "Fehler: Pattern nicht gefunden")
+                return
+            
+            pattern = self.pattern_entries[selected_name].get().strip()
+            test_text = test_textbox.get("1.0", "end").strip()
+            
+            result_textbox.delete("1.0", "end")
+            
+            if not self.pattern_manager.validate_pattern(pattern):
+                result_textbox.insert("1.0", "✗ Ungültiges Regex-Pattern!")
+                return
+            
+            match = self.pattern_manager.test_pattern(pattern, test_text)
+            
+            if match:
+                result_textbox.insert("1.0", f"✓ Match gefunden:\n\n{match}")
+            else:
+                result_textbox.insert("1.0", "✗ Kein Match gefunden")
+        
+        # Test-Button
+        test_btn = ctk.CTkButton(dialog, text="▶ Test ausführen", command=run_test)
+        test_btn.pack(pady=10)
     
     def browse_path(self, key: str):
         """Öffnet Dialog zur Pfadauswahl."""
@@ -532,6 +897,10 @@ class MainWindow(ctk.CTk):
         
         # Unklare Dokumente anzeigen
         self._update_unclear_tab()
+        
+        # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+        self.tabs_data_loaded["Suche"] = False
+        self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
     
     def _add_result_row(self, filename: str, analysis: Dict[str, Any], 
                        status: str, color: str):
@@ -781,29 +1150,192 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte Datei nicht öffnen:\n{e}")
     
-    def load_unclear_legacy_entries(self):
-        """Lädt unklare Legacy-Einträge aus der Datenbank."""
-        # Alte Einträge löschen
-        for widget in self.legacy_container.winfo_children():
-            widget.destroy()
-        
-        # Einträge aus DB laden
-        entries = self.document_index.get_unclear_legacy_entries(status="offen")
-        
-        if not entries:
-            no_entries = ctk.CTkLabel(self.legacy_container, 
-                                     text="✓ Keine unklaren Legacy-Aufträge vorhanden",
-                                     font=ctk.CTkFont(size=14),
-                                     text_color="green")
-            no_entries.pack(pady=20)
-            self.legacy_status.configure(text="0 offene Einträge", text_color="green")
+    def toggle_watchdog(self):
+        """Startet oder stoppt die automatische Ordnerüberwachung."""
+        if not WATCHDOG_AVAILABLE:
+            messagebox.showerror("Fehler", 
+                               "watchdog nicht installiert!\n\n"
+                               "Installation mit: pip install watchdog")
             return
         
-        # Einträge anzeigen
-        for entry in entries:
-            self._add_legacy_entry_row(entry)
+        if self.watchdog_service and self.watchdog_service.is_watching:
+            # Stoppen
+            self.stop_watchdog()
+        else:
+            # Starten
+            self.start_watchdog()
+    
+    def start_watchdog(self):
+        """Startet die automatische Ordnerüberwachung."""
+        input_dir = self.config.get("input_dir")
         
-        self.legacy_status.configure(text=f"{len(entries)} offene Einträge", text_color="orange")
+        if not input_dir or not os.path.exists(input_dir):
+            messagebox.showerror("Fehler", 
+                               "Eingangsordner nicht gefunden!\n"
+                               "Bitte Einstellungen prüfen.")
+            return
+        
+        try:
+            # Watchdog-Service erstellen
+            from services.watchdog_service import WatchdogService
+            self.watchdog_service = WatchdogService(
+                watch_directory=input_dir,
+                callback=self.process_single_document
+            )
+            
+            # Starten
+            if self.watchdog_service.start():
+                self.watch_btn.configure(text="⏹ Auto-Watch stoppen", fg_color="red")
+                self.watch_status.configure(text="🟢 Aktiv", text_color="green")
+                self.process_status.configure(text=f"Überwache: {input_dir}")
+                messagebox.showinfo("Auto-Watch", 
+                                  f"Ordnerüberwachung gestartet!\n\n"
+                                  f"Ordner: {input_dir}\n\n"
+                                  f"Neue Dokumente werden automatisch verarbeitet.")
+            else:
+                messagebox.showerror("Fehler", "Konnte Überwachung nicht starten!")
+                
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+    
+    def stop_watchdog(self):
+        """Stoppt die automatische Ordnerüberwachung."""
+        if self.watchdog_service:
+            if self.watchdog_service.stop():
+                self.watch_btn.configure(text="🔍 Auto-Watch starten", fg_color="green")
+                self.watch_status.configure(text="⚪ Gestoppt", text_color="gray")
+                self.process_status.configure(text="Bereit")
+                self.watchdog_service = None
+            else:
+                messagebox.showerror("Fehler", "Konnte Überwachung nicht stoppen!")
+    
+    def process_single_document(self, file_path: str):
+        """
+        Verarbeitet ein einzelnes Dokument (wird von Watchdog aufgerufen).
+        
+        Args:
+            file_path: Pfad zum Dokument
+        """
+        try:
+            filename = os.path.basename(file_path)
+            root_dir = self.config.get("root_dir")
+            unclear_dir = self.config.get("unclear_dir")
+            tesseract_path = self.config.get("tesseract_path")
+            
+            # Validierung
+            if not root_dir or not unclear_dir:
+                print(f"❌ Konfiguration unvollständig für: {filename}")
+                return
+            
+            # Legacy-Resolver initialisieren
+            from services.legacy_resolver import LegacyResolver
+            from services.vehicles import VehicleManager
+            
+            vehicle_manager = VehicleManager()
+            legacy_resolver = LegacyResolver(self.customer_manager, vehicle_manager)
+            
+            # Dokument analysieren
+            analysis = analyze_document(
+                file_path, 
+                tesseract_path,
+                vorlage_name=self.vorlagen_manager.get_active_vorlage().name,
+                vorlagen_manager=self.vorlagen_manager,
+                legacy_resolver=legacy_resolver
+            )
+            
+            # Dokument verarbeiten
+            target_path, is_clear, reason = process_document(
+                file_path, analysis, root_dir, unclear_dir, self.customer_manager
+            )
+            
+            # Logging
+            if is_clear:
+                log_success(file_path, target_path, analysis, analysis["confidence"])
+                status = "✓ Verschoben"
+                color = "green"
+                doc_status = "success"
+            else:
+                log_unclear(file_path, target_path, analysis, analysis["confidence"], reason)
+                status = "⚠ Unklar"
+                color = "orange"
+                doc_status = "unclear"
+            
+            # Zum Index hinzufügen
+            self.document_index.add_document(file_path, target_path, analysis, doc_status)
+            
+            # Bei unklaren Legacy-Aufträgen: zur unclear_legacy Tabelle hinzufügen
+            if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
+                self.document_index.add_unclear_legacy(target_path, analysis)
+            
+            # Ergebnis in GUI anzeigen
+            self._add_result_row(filename, analysis, status, color)
+            
+            # Status aktualisieren
+            self.process_status.configure(text=f"Letztes Dokument: {filename} - {status}")
+            
+            # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+            self.tabs_data_loaded["Suche"] = False
+            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
+            
+            print(f"✅ Dokument verarbeitet: {filename} → {status}")
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Verarbeiten von {file_path}: {e}")
+            log_error(file_path, str(e))
+    
+    def load_unclear_legacy_entries(self):
+        """Lädt unklare Legacy-Einträge aus der Datenbank (Thread-sicher)."""
+        # Lade-Indikator anzeigen (im Haupt-Thread)
+        def show_loading():
+            for widget in self.legacy_container.winfo_children():
+                widget.destroy()
+            
+            loading_label = ctk.CTkLabel(
+                self.legacy_container, 
+                text="⏳ Lade Daten...",
+                font=ctk.CTkFont(size=14),
+                text_color="gray"
+            )
+            loading_label.pack(pady=20)
+            self.legacy_status.configure(text="Lädt...", text_color="gray")
+        
+        # Zeige Lade-Indikator
+        if threading.current_thread() != threading.main_thread():
+            self.after(0, show_loading)
+        else:
+            show_loading()
+        
+        # Einträge aus DB laden (kann langsam sein)
+        entries = self.document_index.get_unclear_legacy_entries(status="offen")
+        
+        # GUI-Update im Haupt-Thread
+        def update_gui():
+            # Alte Widgets löschen
+            for widget in self.legacy_container.winfo_children():
+                widget.destroy()
+            
+            if not entries:
+                no_entries = ctk.CTkLabel(
+                    self.legacy_container, 
+                    text="✓ Keine unklaren Legacy-Aufträge vorhanden",
+                    font=ctk.CTkFont(size=14),
+                    text_color="green"
+                )
+                no_entries.pack(pady=20)
+                self.legacy_status.configure(text="0 offene Einträge", text_color="green")
+                return
+            
+            # Einträge anzeigen
+            for entry in entries:
+                self._add_legacy_entry_row(entry)
+            
+            self.legacy_status.configure(text=f"{len(entries)} offene Einträge", text_color="orange")
+        
+        # Update GUI im Haupt-Thread
+        if threading.current_thread() != threading.main_thread():
+            self.after(0, update_gui)
+        else:
+            update_gui()
     
     def _add_legacy_entry_row(self, entry: Dict[str, Any]):
         """Fügt eine Zeile für einen Legacy-Eintrag hinzu."""
@@ -968,10 +1500,195 @@ class MainWindow(ctk.CTk):
             
             # Status aktualisieren
             messagebox.showinfo("Erfolg", f"Auftrag erfolgreich Kunde {kunden_nr} zugeordnet!")
+            
+            # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+            self.tabs_data_loaded["Suche"] = False
+            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
+            
+            # Liste neu laden
             self.load_unclear_legacy_entries()
             
         except Exception as e:
             messagebox.showerror("Fehler", f"Fehler bei der Zuordnung:\n{e}")
+    
+    def create_backup(self):
+        """Erstellt ein Backup aller wichtigen Daten."""
+        from services.backup_manager import BackupManager
+        
+        # Backup-Namen abfragen
+        dialog = ctk.CTkInputDialog(
+            text="Backup-Name (optional):",
+            title="Backup erstellen"
+        )
+        backup_name = dialog.get_input()
+        
+        if backup_name is None:  # Abgebrochen
+            return
+        
+        # Backup erstellen
+        backup_manager = BackupManager(self.config)
+        success, backup_path, message = backup_manager.create_backup(backup_name)
+        
+        if success:
+            self.backup_status.configure(text="✓ Backup erstellt", text_color="green")
+            messagebox.showinfo("Backup erfolgreich", message)
+        else:
+            self.backup_status.configure(text="✗ Fehler", text_color="red")
+            messagebox.showerror("Backup fehlgeschlagen", message)
+    
+    def restore_backup(self):
+        """Stellt ein Backup wieder her."""
+        from services.backup_manager import BackupManager
+        
+        # Backup-Datei auswählen
+        backup_path = filedialog.askopenfilename(
+            title="Backup auswählen",
+            filetypes=[("ZIP-Archiv", "*.zip"), ("Alle Dateien", "*.*")],
+            initialdir=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "..", 
+                "backups"
+            )
+        )
+        
+        if not backup_path:
+            return
+        
+        # Sicherheitsabfrage
+        if not messagebox.askyesno(
+            "Backup wiederherstellen",
+            "⚠️ WARNUNG: Alle aktuellen Daten werden überschrieben!\n\n"
+            "Möchten Sie wirklich dieses Backup wiederherstellen?\n\n"
+            "Empfehlung: Erstellen Sie zuerst ein Backup der aktuellen Daten!"
+        ):
+            return
+        
+        # Backup wiederherstellen
+        backup_manager = BackupManager(self.config)
+        success, message = backup_manager.restore_backup(backup_path)
+        
+        if success:
+            self.backup_status.configure(text="✓ Wiederhergestellt", text_color="green")
+            messagebox.showinfo("Wiederherstellung erfolgreich", message)
+        else:
+            self.backup_status.configure(text="✗ Fehler", text_color="red")
+            messagebox.showerror("Wiederherstellung fehlgeschlagen", message)
+    
+    def manage_backups(self):
+        """Zeigt Backup-Verwaltungs-Dialog."""
+        from services.backup_manager import BackupManager
+        
+        backup_manager = BackupManager(self.config)
+        backups = backup_manager.list_backups()
+        
+        # Neues Fenster für Backup-Verwaltung
+        manage_window = ctk.CTkToplevel(self)
+        manage_window.title("Backup-Verwaltung")
+        manage_window.geometry("900x500")
+        
+        # Überschrift
+        title = ctk.CTkLabel(manage_window, text="📋 Verfügbare Backups", 
+                            font=ctk.CTkFont(size=18, weight="bold"))
+        title.pack(pady=10)
+        
+        if not backups:
+            no_backups = ctk.CTkLabel(manage_window, text="Keine Backups vorhanden",
+                                     font=ctk.CTkFont(size=14),
+                                     text_color="gray")
+            no_backups.pack(pady=50)
+            return
+        
+        # Scrollbarer Bereich
+        scroll_frame = ctk.CTkScrollableFrame(manage_window)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Backup-Liste
+        for backup in backups:
+            backup_frame = ctk.CTkFrame(scroll_frame)
+            backup_frame.pack(fill="x", pady=5, padx=5)
+            
+            # Backup-Info
+            info_frame = ctk.CTkFrame(backup_frame)
+            info_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+            
+            name_label = ctk.CTkLabel(info_frame, text=backup["name"],
+                                     font=ctk.CTkFont(size=14, weight="bold"),
+                                     anchor="w")
+            name_label.pack(anchor="w")
+            
+            date_label = ctk.CTkLabel(info_frame, 
+                                     text=f"📅 {backup['created_at'][:19].replace('T', ' ')}",
+                                     font=ctk.CTkFont(size=11),
+                                     anchor="w")
+            date_label.pack(anchor="w")
+            
+            size_mb = backup["size"] / (1024 * 1024)
+            size_label = ctk.CTkLabel(info_frame, 
+                                     text=f"💾 {size_mb:.2f} MB | Dateien: {', '.join(backup['files'])}",
+                                     font=ctk.CTkFont(size=10),
+                                     text_color="gray",
+                                     anchor="w")
+            size_label.pack(anchor="w")
+            
+            # Aktions-Buttons
+            button_frame = ctk.CTkFrame(backup_frame)
+            button_frame.pack(side="right", padx=10)
+            
+            restore_btn = ctk.CTkButton(button_frame, text="♻️ Wiederherstellen",
+                                       command=lambda p=backup["path"]: self._restore_from_manage(p, manage_window),
+                                       width=150,
+                                       fg_color="green")
+            restore_btn.pack(side="left", padx=5)
+            
+            delete_btn = ctk.CTkButton(button_frame, text="🗑️ Löschen",
+                                      command=lambda p=backup["path"], f=backup_frame: self._delete_backup(p, f, backup_manager),
+                                      width=100,
+                                      fg_color="red")
+            delete_btn.pack(side="left", padx=5)
+    
+    def _restore_from_manage(self, backup_path: str, manage_window):
+        """Hilfsfunktion zum Wiederherstellen aus der Verwaltung."""
+        manage_window.destroy()
+        
+        from services.backup_manager import BackupManager
+        
+        if not messagebox.askyesno(
+            "Backup wiederherstellen",
+            "⚠️ WARNUNG: Alle aktuellen Daten werden überschrieben!\n\n"
+            "Möchten Sie wirklich dieses Backup wiederherstellen?"
+        ):
+            return
+        
+        backup_manager = BackupManager(self.config)
+        success, message = backup_manager.restore_backup(backup_path)
+        
+        if success:
+            self.backup_status.configure(text="✓ Wiederhergestellt", text_color="green")
+            messagebox.showinfo("Wiederherstellung erfolgreich", message)
+        else:
+            self.backup_status.configure(text="✗ Fehler", text_color="red")
+            messagebox.showerror("Wiederherstellung fehlgeschlagen", message)
+    
+    def _delete_backup(self, backup_path: str, frame, backup_manager):
+        """Hilfsfunktion zum Löschen eines Backups."""
+        if messagebox.askyesno("Backup löschen", "Backup wirklich löschen?"):
+            success, message = backup_manager.delete_backup(backup_path)
+            
+            if success:
+                frame.destroy()
+                messagebox.showinfo("Erfolg", message)
+            else:
+                messagebox.showerror("Fehler", message)
+    
+    def on_closing(self):
+        """Wird beim Schließen des Fensters aufgerufen."""
+        # Watchdog stoppen falls aktiv
+        if self.watchdog_service and self.watchdog_service.is_watching:
+            print("Stoppe Watchdog...")
+            self.watchdog_service.stop()
+        
+        # Fenster schließen
+        self.destroy()
 
 
 def create_and_run_gui(config: Dict[str, Any], customer_manager: CustomerManager):

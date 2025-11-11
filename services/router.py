@@ -180,6 +180,18 @@ def process_document(file_path: str, analysis_result: Dict[str, Any],
         - is_clear: True wenn klar zuordenbar
         - reason: Grund falls unklar, sonst leerer String
     """
+    # Auto-Add: Neuen Kunden aus Dokumentdaten hinzufügen
+    kunden_nr = analysis_result.get("kunden_nr")
+    if kunden_nr and not customer_manager.customer_exists(kunden_nr):
+        # Kunde existiert noch nicht -> automatisch hinzufügen
+        customer_manager.add_or_update_customer(
+            kunden_nr=kunden_nr,
+            name=analysis_result.get("kunden_name", f"Kunde_{kunden_nr}"),
+            plz=analysis_result.get("plz"),
+            strasse=analysis_result.get("strasse"),
+            auto_save=True
+        )
+    
     # Zielpfad bestimmen
     target_path, is_clear = build_target_path(
         analysis_result, root_dir, unclear_dir, customer_manager

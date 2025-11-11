@@ -1,5 +1,7 @@
 # WerkstattArchiv
 
+**Version 0.8.0**
+
 Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokumenten.
 
 ## Features
@@ -11,6 +13,10 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 - ✅ **Dokumenten-Indexierung & Suche** (neu!)
 - ✅ **Statistiken & Auswertungen** (neu!)
 - ✅ **Legacy-Auftrags-System** - Automatische Zuordnung alter Aufträge ohne Kundennummer (neu!)
+- ✅ **Automatische Ordnerüberwachung** - Neue Dokumente werden automatisch verarbeitet (neu!)
+- ✅ **Konfigurierbare Regex-Patterns** - Anpassbare Suchmuster über GUI (neu!)
+- ✅ **Automatische Kundenverwaltung** - Kunden werden automatisch aus Dokumenten hinzugefügt (neu!)
+- ✅ **Backup & Restore** - Sichere alle Daten mit einem Klick (neu!)
 - ✅ Manuelle Nachbearbeitung unklarer Dokumente
 - ✅ Vollständig lokal (keine Cloud-Services)
 - ✅ Ausführliches Logging aller Vorgänge
@@ -33,10 +39,14 @@ WerkstattArchiv/
 │   ├── legacy_resolver.py       # ⭐ NEU: Legacy-Zuordnungs-Logik
 │   ├── vehicles.py              # ⭐ NEU: Fahrzeug-Index-Manager
 │   ├── filename_generator.py   # ⭐ NEU: Standardisierte Dateinamen
+│   ├── watchdog_service.py      # ⭐ NEU: Automatische Ordnerüberwachung
+│   ├── pattern_manager.py       # ⭐ NEU: Konfigurierbare Regex-Patterns
+│   ├── backup_manager.py        # ⭐ NEU: Backup & Restore System
 │   ├── vorlagen.py              # Vorlagen-Manager
 │   └── logger.py                # Logging-Service
 ├── data/
 │   └── vehicles.csv             # ⭐ NEU: Fahrzeug-Kundenzuordnung (auto-erstellt)
+├── backups/                     # ⭐ NEU: Backup-Verzeichnis (auto-erstellt)
 └── beispiel_auftraege/          # Test-PDFs (nicht im Git)
     ├── auftrag.pdf              # Legacy ohne Kundennr (alte Vorlage)
     └── Schultze.pdf             # Modern mit Kundennr (neue Vorlage)
@@ -105,9 +115,21 @@ Bearbeite `config.json` oder nutze die GUI:
 }
 ```
 
-### Schritt 5: Kundendatei erstellen
+### Schritt 5: Kundendatei erstellen (optional)
 
-Erstelle eine CSV-Datei mit dem erweiterten Format (für Legacy-Support):
+**⚡ NEU: Automatisches Hinzufügen von Kunden!**
+
+Die Kundendatei wird **automatisch befüllt**, wenn neue Dokumente verarbeitet werden. Du musst sie **nicht mehr manuell erstellen**!
+
+**Was passiert automatisch:**
+- ✅ Neue Kundennummer auf Dokument gefunden → Kunde wird automatisch in `kunden.csv` gespeichert
+- ✅ Kundenname wird aus dem Dokument extrahiert
+- ✅ Optional: PLZ, Straße werden ebenfalls gespeichert (wenn erkannt)
+- ✅ Bei weiteren Dokumenten desselben Kunden: Daten werden aktualisiert/ergänzt
+
+**Manuelles Erstellen (optional):**
+
+Falls du Kunden vorab anlegen möchtest, erstelle eine CSV-Datei:
 
 ```csv
 kunden_nr;name;plz;ort;strasse;telefon
@@ -141,14 +163,251 @@ python main.py
 ### Workflow
 
 1. **Einstellungen-Tab**: Pfade konfigurieren und Kundendatenbank laden
-2. **Verarbeitung-Tab**: "Eingangsordner scannen" klicken
+2. **Verarbeitung-Tab**: "Eingangsordner scannen" klicken ODER "🔍 Auto-Watch starten" für automatische Überwachung
 3. **Suche-Tab**: Nach verarbeiteten Dokumenten suchen (neu!)
 4. **Unklare Dokumente-Tab**: Manuelle Nachbearbeitung bei Bedarf
 5. **Unklare Legacy-Aufträge-Tab**: Manuelle Zuordnung alter Aufträge ohne Kundennummer (neu!)
 
 ---
 
-## 🔄 Legacy-Auftrags-System
+## 🔍 Automatische Ordnerüberwachung (Auto-Watch)
+
+Das WerkstattArchiv kann den Eingangsordner **automatisch überwachen** und neue Dokumente sofort verarbeiten, sobald sie erscheinen.
+
+### Wie funktioniert es?
+
+#### 1. **Aktivierung im Verarbeitungs-Tab**
+
+Klicke auf **"🔍 Auto-Watch starten"**:
+- System überwacht den konfigurierten Eingangsordner
+- Status wechselt zu **🟢 Aktiv**
+- Neue Dateien werden **automatisch erkannt und verarbeitet**
+- Button wechselt zu **"⏹ Auto-Watch stoppen"**
+
+#### 2. **Automatische Verarbeitung**
+
+Sobald eine neue Datei im Eingangsordner erscheint:
+1. **2 Sekunden Wartezeit** (damit Upload abgeschlossen ist)
+2. **Automatische Analyse** mit aktuell gewählter Vorlage
+3. **Verschieben** in die richtige Ordnerstruktur
+4. **Indexierung** in der Datenbank
+5. **Live-Anzeige** in der Ergebnistabelle
+
+**Unterstützte Dateitypen:**
+- PDF (`.pdf`)
+- Bilder (`.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp`)
+
+#### 3. **Status-Anzeige**
+
+- **🟢 Aktiv** = Ordner wird überwacht
+- **⚪ Gestoppt** = Keine Überwachung
+- **Letztes Dokument: ...** = Info über zuletzt verarbeitete Datei
+
+#### 4. **Stoppen**
+
+Klicke auf **"⏹ Auto-Watch stoppen"**:
+- Überwachung wird beendet
+- Keine automatische Verarbeitung mehr
+- Manuelle Verarbeitung weiterhin möglich
+
+### Vorteile von Auto-Watch
+
+✅ **Zeitersparnis** - Keine manuelle Verarbeitung mehr nötig  
+✅ **Sofortige Verarbeitung** - Dokumente werden direkt beim Eintreffen sortiert  
+✅ **Immer aktuelle Daten** - Kein "Vergessen" von Dokumenten  
+✅ **Perfekt für Scanner** - Scanne direkt in den Eingangsordner  
+✅ **Netzwerk-fähig** - Überwache auch Netzlaufwerke  
+
+### Technische Details
+
+**Basis-Technologie:** Python `watchdog` Library  
+**Event-Typ:** File Creation Events  
+**Cooldown:** 2 Sekunden (verhindert unvollständige Uploads)  
+**Thread-Safe:** Verarbeitung in separaten Threads  
+
+**Sicherheitsmechanismen:**
+- Dateien werden erst verarbeitet wenn vollständig geschrieben
+- Doppelte Verarbeitung wird verhindert
+- Fehlerhafte Dateien werden übersprungen und geloggt
+
+### Installation
+
+Die `watchdog` Library ist bereits in `requirements.txt` enthalten:
+
+```bash
+pip install -r requirements.txt
+```
+
+**Hinweis:** Auto-Watch ist optional. Wenn `watchdog` nicht installiert ist, funktioniert die manuelle Verarbeitung trotzdem normal.
+
+---
+
+## � Konfigurierbare Regex-Patterns
+
+Das WerkstattArchiv ermöglicht die **vollständige Anpassung aller Regex-Patterns** über die GUI - ohne Code-Änderungen!
+
+### Warum Pattern anpassen?
+
+Jede Werkstatt hat unterschiedliche Dokumentenformate:
+- ✏️ "Kunden-Nr." vs. "KdNr" vs. "Kunde:"
+- ✏️ "Auftragsnummer" vs. "Werkstatt-Auftrag"
+- ✏️ Unterschiedliche Datumsformate
+- ✏️ Spezielle Kennzeichenformate
+
+**Lösung:** Passe die Patterns an Ihre Dokumente an!
+
+### Regex-Patterns Tab
+
+Öffne den Tab **"Regex-Patterns"** in der GUI:
+
+#### Verfügbare Pattern-Kategorien:
+
+**📁 Stammdaten**
+- `kunden_nr` - Kundennummer (Standard: 5-6 Ziffern nach "Kunden-Nr.", "Kundennummer")
+- `auftrag_nr` - Auftragsnummer (Standard: 5-7 Ziffern nach "Auftrags-Nr.", "Auftragsnummer")
+- `datum` - Datum (Standard: TT.MM.JJJJ oder TT/MM/JJJJ)
+- `kunden_name` - Kundenname (Standard: Nach "Kunde:", "Name:", "Auftraggeber:")
+
+**🚗 Fahrzeugdaten**
+- `fin` - Fahrzeug-Identifikationsnummer (Standard: 17 Zeichen alphanumerisch)
+- `kennzeichen` - KFZ-Kennzeichen (Standard: deutsches Format XX-YY 1234)
+
+**📍 Adressdaten**
+- `plz` - Postleitzahl (Standard: 5-stellige Zahl)
+- `strasse` - Straße mit Hausnummer
+
+**📄 Dokumenttypen**
+- `rechnung` - Erkennung von Rechnungen
+- `kva` - Kostenvoranschlag/KVA
+- `auftrag` - Aufträge
+- `hu` - Hauptuntersuchung
+- `garantie` - Garantiedokumente
+
+### Pattern bearbeiten
+
+1. **Pattern anpassen**: Trage dein Regex-Pattern in das Eingabefeld ein
+2. **Testen**: Klicke auf "🧪 Pattern testen" um es mit Beispieltext zu prüfen
+3. **Speichern**: Klicke auf "💾 Speichern" - Änderungen wirken sofort!
+4. **Zurücksetzen**: Klicke auf "↺ Zurücksetzen" um Standardwerte wiederherzustellen
+
+### Beispiele für Pattern-Anpassungen
+
+#### Beispiel 1: Alternative Kundennummer-Formate
+
+**Standard-Pattern:**
+```regex
+(?:Kunde(?:n)?[-\s]*(?:Nr|nummer)|Kd\.?[-\s]*Nr\.?)[:\s]+(\d+)
+```
+
+**Angepasst für "KdNr: 12345":**
+```regex
+(?:Kunde(?:n)?[-\s]*(?:Nr|nummer)|Kd\.?[-\s]*Nr\.?|KdNr)[:\s]+(\d+)
+```
+
+**Angepasst für "Kunde: 12345" (ohne "Nr"):**
+```regex
+Kunde[:\s]+(\d{5,6})
+```
+
+#### Beispiel 2: Amerikanisches Datumsformat
+
+**Standard-Pattern (DD.MM.YYYY):**
+```regex
+(\d{1,2})\.(\d{1,2})\.(\d{4})
+```
+
+**Angepasst für MM/DD/YYYY:**
+```regex
+(\d{1,2})/(\d{1,2})/(\d{4})
+```
+
+#### Beispiel 3: Kennzeichen mit Bindestrich optional
+
+**Standard-Pattern:**
+```regex
+([A-ZÄÖÜ]{1,3}[-\s][A-ZÄÖÜ]{1,2}\s+\d{1,4}\s*[A-Z]?)
+```
+
+**Angepasst ohne Bindestrich-Pflicht:**
+```regex
+([A-ZÄÖÜ]{1,3}[-\s]?[A-ZÄÖÜ]{1,2}[-\s]?\d{1,4}[A-Z]?)
+```
+
+### Pattern-Tester
+
+Der integrierte **Pattern-Tester** hilft beim Entwickeln:
+
+1. Klicke auf "🧪 Pattern testen"
+2. Wähle das zu testende Pattern aus dem Dropdown
+3. Füge Beispieltext ein (z.B. aus einem echten Dokument)
+4. Klicke "▶ Test ausführen"
+5. Siehst du den erwarteten Match? → Speichern!
+6. Kein Match? → Pattern anpassen und erneut testen
+
+**Beispiel-Testtext:**
+```
+Werkstatt Müller GmbH
+Kunden-Nr.: 28307
+Auftragsnummer: 78708
+Datum: 15.03.2019
+FIN: VR7BCZKXCME033281
+Kennzeichen: SFB-KI 23E
+```
+
+### Regex-Grundlagen
+
+**Wichtige Regex-Zeichen:**
+- `\d` = Ziffer (0-9)
+- `\d+` = Eine oder mehr Ziffern
+- `\d{5}` = Genau 5 Ziffern
+- `\d{5,6}` = 5 bis 6 Ziffern
+- `[A-Z]` = Großbuchstabe
+- `[a-z]` = Kleinbuchstabe
+- `[A-Za-z]` = Beliebiger Buchstabe
+- `[:\s]+` = Doppelpunkt oder Leerzeichen (mehrfach)
+- `(?:...)` = Nicht-erfassende Gruppe
+- `(...)` = Erfassende Gruppe (wird extrahiert!)
+- `|` = ODER
+- `?` = Optional (0 oder 1 Mal)
+- `*` = Beliebig oft (0 bis n)
+- `+` = Mindestens einmal (1 bis n)
+
+**Tipp:** Die runden Klammern `()` um den zu extrahierenden Teil setzen!
+
+### Speicherung
+
+Alle Patterns werden in `patterns.json` gespeichert:
+
+```json
+{
+  "kunden_nr": "(?:Kunde(?:n)?[-\\s]*(?:Nr|nummer)|Kd\\.?[-\\s]*Nr\\.?)[:\\s]+(\\d+)",
+  "auftrag_nr": "(?:Werkstatt[-\\s]*)?Auftrag(?:s)?[-\\s]*(?:Nr|nummer)\\.?[:\\s]+(\\d+)",
+  "datum": "(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})",
+  ...
+}
+```
+
+Diese Datei kann auch manuell bearbeitet werden (mit Vorsicht!).
+
+### Fehlerbehandlung
+
+**Ungültiges Pattern:**
+- ✗ System prüft vor dem Speichern
+- ✗ Fehlermeldung mit Pattern-Namen
+- ✗ Keine Speicherung bei Fehlern
+
+**Pattern funktioniert nicht:**
+1. Prüfe mit dem Pattern-Tester
+2. Kopiere echten Text aus deinem Dokument
+3. Teste verschiedene Pattern-Varianten
+4. Nutze Online-Regex-Tester (z.B. regex101.com)
+
+**Zurücksetzen:**
+- Klicke "↺ Zurücksetzen" um alle Patterns auf Standardwerte zurückzusetzen
+
+---
+
+## �🔄 Legacy-Auftrags-System
 
 Das WerkstattArchiv unterstützt die automatische Verarbeitung **alter Werkstattaufträge**, die noch keine Kundennummer auf dem Dokument enthalten. Das System arbeitet mit **strikten deterministischen Regeln** - ohne fuzzy matching, KI-Raten oder Heuristiken.
 
@@ -288,6 +547,93 @@ kunden_nr;name;plz;ort;strasse;telefon
 
 ---
 
+## 💾 Backup & Wiederherstellung
+
+Das WerkstattArchiv bietet ein **integriertes Backup-System** zum Sichern und Wiederherstellen aller wichtigen Daten.
+
+### Was wird gesichert?
+
+✅ **Konfigurationsdatei** (`config.json`)  
+✅ **Kundendatenbank** (`kunden.csv`)  
+✅ **Fahrzeug-Index** (`vehicles.csv`)  
+✅ **SQLite-Datenbank** (`werkstatt_index.db` - alle indexierten Dokumente)  
+✅ **Regex-Patterns** (`patterns.json`)  
+
+**Hinweis:** Die **Dokumente selbst** (PDFs/Bilder in den Kundenordnern) werden NICHT gesichert - nur die Metadaten/Index!
+
+### Backup erstellen
+
+**In der GUI:**
+1. Gehe zu **"Einstellungen"** Tab
+2. Scrolle nach unten zum Bereich **"💾 Backup & Wiederherstellung"**
+3. Klicke auf **"📦 Backup erstellen"**
+4. Gib optional einen Namen ein (z.B. "vor_update" oder "2025-11")
+5. ✓ Backup wird erstellt als ZIP-Datei in `backups/`
+
+**Was passiert:**
+- Alle Dateien werden in ein ZIP-Archiv gepackt
+- Backup-Info mit Zeitstempel wird gespeichert
+- Speicherort: `WerkstattArchiv/backups/backup_YYYYMMDD_HHMMSS.zip`
+
+### Backup wiederherstellen
+
+**⚠️ WARNUNG:** Alle aktuellen Daten werden überschrieben!
+
+**In der GUI:**
+1. Gehe zu **"Einstellungen"** Tab
+2. Klicke auf **"♻️ Backup wiederherstellen"**
+3. Wähle eine Backup-ZIP-Datei aus
+4. Bestätige die Sicherheitsabfrage
+5. ✓ Backup wird wiederhergestellt
+6. **Anwendung neu starten!**
+
+### Backups verwalten
+
+**In der GUI:**
+1. Gehe zu **"Einstellungen"** Tab
+2. Klicke auf **"📋 Backups verwalten"**
+3. Übersicht aller Backups:
+   - Backup-Name
+   - Erstellungsdatum
+   - Größe
+   - Enthaltene Dateien
+
+**Aktionen:**
+- **♻️ Wiederherstellen** - Backup direkt wiederherstellen
+- **🗑️ Löschen** - Backup löschen (mit Sicherheitsabfrage)
+
+### Empfohlene Backup-Strategie
+
+📅 **Regelmäßig:** Wöchentliches Backup  
+🔧 **Vor Updates:** Backup vor Software-Updates  
+🚀 **Vor großen Änderungen:** Z.B. vor Massen-Import  
+💡 **Nach wichtigen Änderungen:** Nach manuellen Kundenzuordnungen  
+
+### Technische Details
+
+**Backup-Struktur:**
+```
+backup_20251111_143022.zip
+├── config.json              # Konfiguration
+├── kunden.csv               # Kundenstammdaten
+├── vehicles.csv             # Fahrzeug-Kundenzuordnung
+├── werkstatt_index.db       # Dokumenten-Index
+├── patterns.json            # Regex-Patterns
+└── backup_info.json         # Metadaten
+```
+
+**Backup-Info Beispiel:**
+```json
+{
+  "created_at": "2025-11-11T14:30:22",
+  "backup_name": "backup_20251111_143022",
+  "files": ["config.json", "kunden.csv", "vehicles.csv", ...],
+  "config_snapshot": { ... }
+}
+```
+
+---
+
 ### Dokumentensuche
 
 Der neue **Such-Tab** ermöglicht es, alle verarbeiteten Dokumente zu durchsuchen:
@@ -395,11 +741,11 @@ pip install --upgrade customtkinter
 
 ## Erweiterungsmöglichkeiten
 
-- [ ] Automatische Ordnerüberwachung mit `watchdog`
+- [x] ✅ Automatische Ordnerüberwachung mit `watchdog` (implementiert!)
 - [ ] Zusätzliche Dokumenttypen
 - [ ] Export-Funktion für Statistiken (CSV, Excel)
 - [ ] Batch-Verarbeitung mit Progress-Bar
-- [ ] Konfigurierbare Regex-Patterns über GUI
+- [x] ✅ Konfigurierbare Regex-Patterns über GUI (implementiert!)
 - [x] ✅ Legacy-Aufträge ohne Kundennummer (implementiert!)
 - [x] ✅ Fahrzeug-Index für FIN-basierte Zuordnung (implementiert!)
 - [ ] Barcode/QR-Code Erkennung auf Dokumenten

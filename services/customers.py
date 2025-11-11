@@ -164,3 +164,98 @@ class CustomerManager:
                 matches.append(customer)
         
         return matches
+
+    def add_or_update_customer(self, kunden_nr: str, name: str, 
+                               plz: Optional[str] = None,
+                               ort: Optional[str] = None,
+                               strasse: Optional[str] = None,
+                               telefon: Optional[str] = None,
+                               auto_save: bool = True) -> bool:
+        """
+        Fügt einen neuen Kunden hinzu oder aktualisiert einen bestehenden.
+        
+        Args:
+            kunden_nr: Kundennummer
+            name: Kundenname
+            plz: Postleitzahl (optional)
+            ort: Ort (optional)
+            strasse: Straße (optional)
+            telefon: Telefon (optional)
+            auto_save: Automatisch in CSV speichern
+            
+        Returns:
+            True wenn erfolgreich, False bei Fehler
+        """
+        try:
+            # Bestehenden Kunden laden oder neuen erstellen
+            existing = self.customers.get(kunden_nr)
+            
+            if existing:
+                # Nur nicht-leere Felder überschreiben
+                customer = Customer(
+                    kunden_nr=kunden_nr,
+                    name=name if name else existing.name,
+                    plz=plz if plz else existing.plz,
+                    ort=ort if ort else existing.ort,
+                    strasse=strasse if strasse else existing.strasse,
+                    telefon=telefon if telefon else existing.telefon
+                )
+                print(f"✓ Kunde aktualisiert: {kunden_nr} - {name}")
+            else:
+                customer = Customer(
+                    kunden_nr=kunden_nr,
+                    name=name,
+                    plz=plz,
+                    ort=ort,
+                    strasse=strasse,
+                    telefon=telefon
+                )
+                print(f"✓ Neuer Kunde hinzugefügt: {kunden_nr} - {name}")
+            
+            # In Memory speichern
+            self.customers[kunden_nr] = customer
+            
+            # In CSV speichern
+            if auto_save:
+                return self.save_customers()
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Hinzufügen/Aktualisieren von Kunde {kunden_nr}: {e}")
+            return False
+    
+    def save_customers(self) -> bool:
+        """
+        Speichert alle Kunden in die CSV-Datei.
+        
+        Returns:
+            True wenn erfolgreich, False bei Fehler
+        """
+        try:
+            # Verzeichnis erstellen falls nicht vorhanden
+            os.makedirs(os.path.dirname(self.customers_file), exist_ok=True)
+            
+            with open(self.customers_file, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f, delimiter=";")
+                
+                # Header schreiben
+                writer.writerow(["kunden_nr", "name", "plz", "ort", "strasse", "telefon"])
+                
+                # Kunden sortiert nach Kundennummer schreiben
+                for kunden_nr in sorted(self.customers.keys()):
+                    customer = self.customers[kunden_nr]
+                    writer.writerow([
+                        customer.kunden_nr,
+                        customer.name,
+                        customer.plz or "",
+                        customer.ort or "",
+                        customer.strasse or "",
+                        customer.telefon or ""
+                    ])
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Speichern der Kundendatei: {e}")
+            return False

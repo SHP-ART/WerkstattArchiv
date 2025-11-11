@@ -78,8 +78,20 @@ def validate_config(config: Dict[str, Any]) -> bool:
 
 def main():
     """Hauptfunktion der Anwendung."""
+    # Version importieren
+    try:
+        from version import __version__, __app_name__, __description__
+        app_name = __app_name__
+        version = __version__
+        description = __description__
+    except ImportError:
+        app_name = "WerkstattArchiv"
+        version = "0.8.0"
+        description = "Dokumentenverwaltung"
+    
     print("=" * 60)
-    print("WerkstattArchiv - Dokumentenverwaltung")
+    print(f"{app_name} v{version}")
+    print(description)
     print("=" * 60)
     print()
     

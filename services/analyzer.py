@@ -33,6 +33,15 @@ except ImportError:
     print("Warnung: pytesseract/pdf2image nicht verfügbar. OCR nicht möglich.")
 
 
+# PatternManager für konfigurierbare Regex-Patterns
+try:
+    from services.pattern_manager import PatternManager
+    PATTERN_MANAGER = PatternManager()
+except Exception as e:
+    print(f"Warnung: PatternManager konnte nicht geladen werden: {e}")
+    PATTERN_MANAGER = None
+
+# Fallback: Original Patterns (falls PatternManager nicht verfügbar)
 # Regex-Patterns für die Extraktion
 # Kundennummer: unterstützt "Kunde Nr", "Kd.Nr.", "Kd.-Nr.", "Kundennummer" etc.
 PATTERN_KUNDEN_NR = r"(?:Kunde(?:n)?[-\s]*(?:Nr|nummer)|Kd\.?[-\s]*Nr\.?)[:\s]+(\d+)"
@@ -64,6 +73,33 @@ DOCTYPE_KEYWORDS = {
     "HU": ["HU", "Hauptuntersuchung"],
     "Garantie": ["Garantie"],
 }
+
+
+def get_pattern(name: str) -> str:
+    """
+    Holt ein Pattern vom PatternManager oder gibt Fallback zurück.
+    
+    Args:
+        name: Pattern-Name (z.B. "kunden_nr", "auftrag_nr")
+        
+    Returns:
+        Pattern-String
+    """
+    if PATTERN_MANAGER:
+        pattern = PATTERN_MANAGER.get_pattern(name)
+        if pattern:
+            return pattern
+    
+    # Fallback auf Original-Patterns
+    fallbacks = {
+        "kunden_nr": PATTERN_KUNDEN_NR,
+        "auftrag_nr": PATTERN_AUFTRAG_NR,
+        "datum": PATTERN_DATUM,
+        "kennzeichen": PATTERN_KENNZEICHEN,
+        "fin": PATTERN_FIN,
+        "kunden_name": PATTERN_KUNDENNAME
+    }
+    return fallbacks.get(name, "")
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -177,21 +213,21 @@ def extract_text(file_path: str, tesseract_path: Optional[str] = None) -> str:
     return ""
 
 
-def extract_kunden_nr(text: str) -> Optional[str]:
+def extract_kundennummer(text: str) -> Optional[str]:
     """Extrahiert die Kundennummer aus dem Text."""
-    match = re.search(PATTERN_KUNDEN_NR, text, re.IGNORECASE)
+    match = re.search(get_pattern("kunden_nr"), text, re.IGNORECASE)
     return match.group(1) if match else None
 
 
-def extract_auftrag_nr(text: str) -> Optional[str]:
+def extract_auftragsnummer(text: str) -> Optional[str]:
     """Extrahiert die Auftragsnummer aus dem Text."""
-    match = re.search(PATTERN_AUFTRAG_NR, text, re.IGNORECASE)
+    match = re.search(get_pattern("auftrag_nr"), text, re.IGNORECASE)
     return match.group(1) if match else None
 
 
 def extract_kennzeichen(text: str) -> Optional[str]:
-    """Extrahiert das Kfz-Kennzeichen aus dem Text."""
-    match = re.search(PATTERN_KENNZEICHEN, text, re.IGNORECASE)
+    """Extrahiert das Kennzeichen aus dem Text."""
+    match = re.search(get_pattern("kennzeichen"), text, re.IGNORECASE)
     if match:
         # Normalisiere: Entferne überflüssige Leerzeichen
         kennzeichen = match.group(1).strip()
@@ -205,7 +241,7 @@ def extract_kennzeichen(text: str) -> Optional[str]:
 def extract_fin(text: str) -> Optional[str]:
     """Extrahiert die FIN (Fahrgestellnummer) aus dem Text."""
     # Suche alle 17-Zeichen-Kombinationen
-    matches = re.finditer(PATTERN_FIN, text, re.IGNORECASE)
+    matches = re.finditer(get_pattern("fin"), text, re.IGNORECASE)
     for match in matches:
         fin = match.group(1).upper().strip()
         # Validierung: FIN muss genau 17 Zeichen haben UND Ziffern enthalten
@@ -242,7 +278,7 @@ def extract_kundenname(text: str) -> Optional[str]:
 
 def extract_datum(text: str) -> Optional[int]:
     """Extrahiert das erste Datum und gibt das Jahr zurück."""
-    match = re.search(PATTERN_DATUM, text)
+    match = re.search(get_pattern("datum"), text)
     if match:
         jahr = int(match.group(3))
         # Plausibilitätsprüfung
