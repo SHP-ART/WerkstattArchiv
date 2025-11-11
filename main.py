@@ -123,6 +123,8 @@ def main():
         print("\nAnwendung beendet durch Benutzer.")
     except Exception as e:
         print(f"\nFehler beim Starten der GUI: {e}")
+        import traceback
+        traceback.print_exc()
         input("Drücke Enter zum Beenden...")
 
 

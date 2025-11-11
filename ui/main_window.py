@@ -48,6 +48,10 @@ class MainWindow(ctk.CTk):
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
         
+        # Cache für Such-Daten
+        self._search_doc_types = []
+        self._search_years = []
+        
         # Tab-Erstellungs-Flags (Lazy Loading)
         self.tabs_created = {
             "Einstellungen": False,
@@ -89,9 +93,43 @@ class MainWindow(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
+        # Zeige Ladebildschirm
+        self.show_loading_screen()
+        
+        # Lade GUI asynchron
+        self.after(100, self.init_gui)
+    
+    def show_loading_screen(self):
+        """Zeigt einen Ladebildschirm während die GUI geladen wird."""
+        # Loading Frame
+        self.loading_frame = ctk.CTkFrame(self)
+        self.loading_frame.pack(fill="both", expand=True)
+        
+        # Titel
+        title = ctk.CTkLabel(self.loading_frame, text=f"{self.app_name} v{self.version}",
+                            font=ctk.CTkFont(size=32, weight="bold"))
+        title.pack(pady=(100, 20))
+        
+        # Lade-Text
+        loading_label = ctk.CTkLabel(self.loading_frame, text="Lade Anwendung...",
+                                     font=ctk.CTkFont(size=16))
+        loading_label.pack(pady=10)
+        
+        # Progress Bar
+        self.loading_progress = ctk.CTkProgressBar(self.loading_frame, width=400, mode="indeterminate")
+        self.loading_progress.pack(pady=30)
+        self.loading_progress.start()
+        
+        # Status Label
+        self.loading_status = ctk.CTkLabel(self.loading_frame, text="Initialisiere...",
+                                          font=ctk.CTkFont(size=12),
+                                          text_color="gray")
+        self.loading_status.pack(pady=5)
+    
+    def init_gui(self):
+        """Initialisiert die GUI-Komponenten."""
         # Tabview erstellen
         self.tabview = ctk.CTkTabview(self, command=self.on_tab_change)
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Tabs hinzufügen
         self.tabview.add("Einstellungen")
@@ -102,50 +140,130 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
         
-        # Nur die wichtigsten Tabs sofort erstellen (Einstellungen + Verarbeitung)
+        # Starte schrittweises Laden
+        self.after(50, self._load_tabs_step1)
+    
+    def _load_tabs_step1(self):
+        """Lädt Einstellungen Tab."""
+        self.loading_status.configure(text="Erstelle Einstellungen...")
+        self.update_idletasks()
         self.create_settings_tab()
-        self.create_processing_tab()
         self.tabs_created["Einstellungen"] = True
+        self.after(50, self._load_tabs_step2)
+    
+    def _load_tabs_step2(self):
+        """Lädt Verarbeitung Tab."""
+        self.loading_status.configure(text="Erstelle Verarbeitung...")
+        self.update_idletasks()
+        self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
+        self.after(50, self._load_tabs_step3)
+    
+    def _load_tabs_step3(self):
+        """Lädt Suche Tab."""
+        self.loading_status.configure(text="Erstelle Suche...")
+        self.update_idletasks()
+        self.create_search_tab()
+        self.tabs_created["Suche"] = True
+        self.after(50, self._load_tabs_step4)
+    
+    def _load_tabs_step4(self):
+        """Lädt Such-Daten."""
+        self.loading_status.configure(text="Lade Such-Daten...")
+        self.update_idletasks()
+        
+        # Lade Daten synchron beim Start
+        doc_types = ["Alle"] + self.document_index.get_all_document_types()
+        years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+        
+        # Cache die Daten
+        self._search_doc_types = doc_types
+        self._search_years = years
+        
+        # Update GUI
+        self.search_dokument_typ.configure(values=doc_types)
+        self.search_jahr.configure(values=years)
+        self.tabs_data_loaded["Suche"] = True
+        
+        self.after(50, self._load_tabs_step5)
+    
+    def _load_tabs_step5(self):
+        """Lädt Unklare Dokumente Tab."""
+        self.loading_status.configure(text="Erstelle Unklare Dokumente...")
+        self.update_idletasks()
+        self.create_unclear_tab()
+        self.tabs_created["Unklare Dokumente"] = True
+        self.after(50, self._load_tabs_step6)
+    
+    def _load_tabs_step6(self):
+        """Lädt Legacy Tab."""
+        self.loading_status.configure(text="Erstelle Legacy-Aufträge...")
+        self.update_idletasks()
+        self.create_unclear_legacy_tab()
+        self.tabs_created["Unklare Legacy-Aufträge"] = True
+        self.after(50, self._load_tabs_step7)
+    
+    def _load_tabs_step7(self):
+        """Lädt Regex-Patterns Tab."""
+        self.loading_status.configure(text="Erstelle Regex-Patterns...")
+        self.update_idletasks()
+        self.create_patterns_tab()
+        self.tabs_created["Regex-Patterns"] = True
+        self.after(50, self._load_tabs_step8)
+    
+    def _load_tabs_step8(self):
+        """Lädt System Tab."""
+        self.loading_status.configure(text="Erstelle System...")
+        self.update_idletasks()
+        self.create_system_tab()
+        self.tabs_created["System"] = True
+        self.after(100, self._load_tabs_finish)
+    
+    def _load_tabs_finish(self):
+        """Beendet das Laden."""
+        self.loading_status.configure(text="Bereit!")
+        self.update_idletasks()
+        self.after(200, self._show_main_gui)
+    
+    def _show_main_gui(self):
+        """Zeigt die Haupt-GUI an."""
+        self.loading_frame.pack_forget()
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        # Wechsle zu Verarbeitung Tab
+        self.tabview.set("Verarbeitung")
     
     def on_tab_change(self):
-        """Wird aufgerufen wenn ein Tab gewechselt wird (Lazy Loading)."""
+        """Wird aufgerufen wenn ein Tab gewechselt wird."""
         current_tab = self.tabview.get()
         
-        # Tab erstellen wenn noch nicht vorhanden
-        if not self.tabs_created.get(current_tab, False):
-            if current_tab == "Suche":
-                self.create_search_tab()
-                self.tabs_created["Suche"] = True
-            elif current_tab == "Unklare Dokumente":
-                self.create_unclear_tab()
-                self.tabs_created["Unklare Dokumente"] = True
-            elif current_tab == "Unklare Legacy-Aufträge":
-                self.create_unclear_legacy_tab()
-                self.tabs_created["Unklare Legacy-Aufträge"] = True
-            elif current_tab == "Regex-Patterns":
-                self.create_patterns_tab()
-                self.tabs_created["Regex-Patterns"] = True
-            elif current_tab == "System":
-                self.create_system_tab()
-                self.tabs_created["System"] = True
+        # Alle Tabs sind bereits beim Start erstellt, daher nur Daten nachladen wenn nötig
         
         # Daten laden wenn Tab bereits erstellt aber Daten noch nicht geladen
         if current_tab == "Suche":
             if not self.tabs_data_loaded["Suche"]:
-                # Lade Dokumenttypen und Jahre asynchron
-                def load_search_data():
-                    doc_types = ["Alle"] + self.document_index.get_all_document_types()
-                    years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+                # Verwende gecachte Daten falls vorhanden
+                if self._search_doc_types and self._search_years:
+                    self.search_dokument_typ.configure(values=self._search_doc_types)
+                    self.search_jahr.configure(values=self._search_years)
+                    self.tabs_data_loaded["Suche"] = True
+                else:
+                    # Lade Dokumenttypen und Jahre asynchron
+                    def load_search_data():
+                        doc_types = ["Alle"] + self.document_index.get_all_document_types()
+                        years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
 
-                    # Update GUI im Haupt-Thread
-                    self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
-                    self.after(0, lambda: self.search_jahr.configure(values=years))
+                        # Cache speichern
+                        self._search_doc_types = doc_types
+                        self._search_years = years
 
-                # Starte in Thread
-                thread = threading.Thread(target=load_search_data, daemon=True)
-                thread.start()
-                self.tabs_data_loaded["Suche"] = True
+                        # Update GUI im Haupt-Thread
+                        self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
+                        self.after(0, lambda: self.search_jahr.configure(values=years))
+
+                    # Starte in Thread
+                    thread = threading.Thread(target=load_search_data, daemon=True)
+                    thread.start()
+                    self.tabs_data_loaded["Suche"] = True
         
         elif current_tab == "Unklare Legacy-Aufträge":
             # Lade Legacy-Einträge nur wenn noch nicht geladen
@@ -435,6 +553,15 @@ class MainWindow(ctk.CTk):
         self.search_jahr = ctk.CTkComboBox(fields_frame, width=150, values=["Alle"])
         self.search_jahr.set("Alle")
         self.search_jahr.grid(row=2, column=3, padx=5, pady=5)
+        
+        # Monat
+        ctk.CTkLabel(fields_frame, text="Monat:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        monate = ["Alle", "01 - Januar", "02 - Februar", "03 - März", "04 - April", 
+                  "05 - Mai", "06 - Juni", "07 - Juli", "08 - August", 
+                  "09 - September", "10 - Oktober", "11 - November", "12 - Dezember"]
+        self.search_monat = ctk.CTkComboBox(fields_frame, width=150, values=monate)
+        self.search_monat.set("Alle")
+        self.search_monat.grid(row=3, column=1, padx=5, pady=5)
         
         # Buttons
         button_frame = ctk.CTkFrame(search_frame)
@@ -967,6 +1094,16 @@ class MainWindow(ctk.CTk):
             filename = os.path.basename(file_path)
 
             try:
+                # Zeige aktuelle Datei als "wird verarbeitet"
+                self.after_idle(lambda f=filename, idx=i, total=len(files): self._add_result_row(
+                    f, {}, f"⏳ Wird verarbeitet... ({idx+1}/{total})", "yellow"
+                ))
+                
+                # Status aktualisieren
+                self.after_idle(lambda f=filename, idx=i, total=len(files): self.process_status.configure(
+                    text=f"🔄 Verarbeite: {f} ({idx+1}/{total})",
+                    text_color="blue"
+                ))
                 
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
@@ -1009,22 +1146,14 @@ class MainWindow(ctk.CTk):
                 if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
                     self.document_index.add_unclear_legacy(target_path, analysis)
                 
-                # Ergebnis in Tabelle anzeigen (im Haupt-Thread)
-                # Verwende after_idle statt after(0) für bessere Performance
-                self.after_idle(lambda f=filename, a=analysis, s=status, c=color: self._add_result_row(f, a, s, c))
-
-                # Progress-Update nur alle 100ms oder bei letzter Datei
-                if i == len(files) - 1 or (i % 5 == 0):  # Nur jede 5. Datei updaten
-                    self.after_idle(lambda idx=i: self.process_status.configure(
-                        text=f"🔄 Verarbeite {idx+1}/{len(files)}...",
-                        text_color="blue"
-                    ))
+                # Aktualisiere die Zeile mit finalem Status
+                self.after_idle(lambda f=filename, a=analysis, s=status, c=color: self._update_result_row(f, a, s, c))
 
             except Exception as e:
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
                 # Fehler anzeigen (im Haupt-Thread)
-                self.after(0, lambda f=filename, err=str(e): self._add_result_row(f, {}, f"✗ Fehler: {err}", "red"))
+                self.after_idle(lambda f=filename, err=str(e): self._update_result_row(f, {}, f"✗ Fehler: {err}", "red"))
 
         # Status aktualisieren (im Haupt-Thread)
         self.after(0, lambda: self.process_status.configure(
@@ -1041,7 +1170,9 @@ class MainWindow(ctk.CTk):
         # Unklare Dokumente anzeigen (im Haupt-Thread)
         self.after(0, self._update_unclear_tab)
 
-        # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+        # Cache für Such-Daten invalidieren (neu laden beim nächsten Tab-Wechsel)
+        self._search_doc_types = []
+        self._search_years = []
         self.tabs_data_loaded["Suche"] = False
         self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
     
@@ -1050,6 +1181,9 @@ class MainWindow(ctk.CTk):
         """Fügt eine Ergebnis-Zeile zur Tabelle hinzu."""
         row_frame = ctk.CTkFrame(self.results_container)
         row_frame.pack(fill="x", pady=2)
+        
+        # Speichere Referenz für späteres Update
+        row_frame._filename = filename
         
         values = [
             filename,
@@ -1067,6 +1201,35 @@ class MainWindow(ctk.CTk):
             if i == len(values) - 1:  # Status-Spalte
                 label.configure(text_color=color)
             label.grid(row=0, column=i, padx=5, pady=2, sticky="w")
+    
+    def _update_result_row(self, filename: str, analysis: Dict[str, Any], 
+                          status: str, color: str):
+        """Aktualisiert eine existierende Ergebnis-Zeile."""
+        # Finde die Zeile mit diesem Dateinamen
+        for widget in self.results_container.winfo_children():
+            if hasattr(widget, '_filename') and widget._filename == filename:
+                # Lösche alte Labels
+                for child in widget.winfo_children():
+                    child.destroy()
+                
+                # Füge aktualisierte Daten ein
+                values = [
+                    filename,
+                    f"{analysis.get('kunden_nr', 'N/A')} - {analysis.get('kunden_name', 'N/A')[:20]}",
+                    str(analysis.get('auftrag_nr', 'N/A')),
+                    analysis.get('dokument_typ', 'N/A'),
+                    str(analysis.get('jahr', 'N/A')),
+                    f"{analysis.get('confidence', 0.0):.2f}",
+                    analysis.get('vorlage_verwendet', 'N/A')[:12],
+                    status,
+                ]
+                
+                for i, value in enumerate(values):
+                    label = ctk.CTkLabel(widget, text=value, width=150, anchor="w")
+                    if i == len(values) - 1:  # Status-Spalte
+                        label.configure(text_color=color)
+                    label.grid(row=0, column=i, padx=5, pady=2, sticky="w")
+                break
     
     def _update_unclear_tab(self):
         """Aktualisiert den Tab mit unklaren Dokumenten."""
@@ -1173,9 +1336,15 @@ class MainWindow(ctk.CTk):
 
         jahr_str = self.search_jahr.get()
         jahr = int(jahr_str) if jahr_str != "Alle" else None
+        
+        monat_str = self.search_monat.get()
+        monat = None
+        if monat_str != "Alle":
+            # Extrahiere Monatsnummer (z.B. "01 - Januar" -> "01")
+            monat = int(monat_str.split(" - ")[0])
 
         # Debug: Zeige Suchparameter im Log
-        print(f"🔍 Suche mit: kunden_nr={kunden_nr}, kunden_name={kunden_name}, auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}, jahr={jahr}, dateiname={dateiname}")
+        print(f"🔍 Suche mit: kunden_nr={kunden_nr}, kunden_name={kunden_name}, auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}, jahr={jahr}, monat={monat}, dateiname={dateiname}")
 
         try:
             # Suche durchführen
@@ -1184,6 +1353,7 @@ class MainWindow(ctk.CTk):
                 auftrag_nr=auftrag_nr,
                 dokument_typ=dokument_typ,
                 jahr=jahr,
+                monat=monat,
                 kunden_name=kunden_name,
                 dateiname=dateiname
             )
@@ -1215,6 +1385,7 @@ class MainWindow(ctk.CTk):
         self.search_dateiname.delete(0, "end")
         self.search_dokument_typ.set("Alle")
         self.search_jahr.set("Alle")
+        self.search_monat.set("Alle")
         self.search_status.configure(text="")
         
         # Ergebnisse löschen
@@ -1223,24 +1394,133 @@ class MainWindow(ctk.CTk):
     
     def show_statistics(self):
         """Zeigt Statistiken über die indexierten Dokumente."""
-        stats = self.document_index.get_statistics()
-        
-        msg = f"📊 Dokumentenstatistiken\n\n"
-        msg += f"Gesamtanzahl: {stats['total']} Dokumente\n\n"
-        
-        msg += "Nach Status:\n"
-        for status, count in stats['by_status'].items():
-            msg += f"  • {status}: {count}\n"
-        
-        msg += "\nTop Dokumenttypen:\n"
-        for doc_type, count in list(stats['by_type'].items())[:5]:
-            msg += f"  • {doc_type}: {count}\n"
-        
-        msg += "\nNach Jahr:\n"
-        for jahr, count in list(stats['by_year'].items())[:5]:
-            msg += f"  • {jahr}: {count}\n"
-        
-        messagebox.showinfo("Statistiken", msg)
+        try:
+            stats = self.document_index.get_statistics()
+            
+            # Erstelle ein neues Fenster für Statistiken
+            stats_window = ctk.CTkToplevel(self)
+            stats_window.title("📊 Dokumentenstatistiken")
+            stats_window.geometry("700x800")
+            
+            # Scrollbarer Frame
+            scroll_frame = ctk.CTkScrollableFrame(stats_window)
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=20)
+            
+            # Überschrift
+            title = ctk.CTkLabel(scroll_frame, text="📊 Dokumentenstatistiken", 
+                                font=ctk.CTkFont(size=20, weight="bold"))
+            title.pack(pady=10)
+            
+            # Gesamtanzahl (groß und prominent)
+            total_frame = ctk.CTkFrame(scroll_frame, fg_color="blue")
+            total_frame.pack(fill="x", pady=10)
+            
+            total_label = ctk.CTkLabel(total_frame, 
+                                      text=f"{stats['total']} Dokumente",
+                                      font=ctk.CTkFont(size=32, weight="bold"))
+            total_label.pack(pady=20)
+            
+            total_desc = ctk.CTkLabel(total_frame, text="Gesamt indexiert",
+                                     font=ctk.CTkFont(size=14))
+            total_desc.pack(pady=(0, 10))
+            
+            # Zusätzliche Übersicht
+            overview_frame = ctk.CTkFrame(scroll_frame)
+            overview_frame.pack(fill="x", pady=10)
+            
+            overview_title = ctk.CTkLabel(overview_frame, text="Übersicht:", 
+                                         font=ctk.CTkFont(size=16, weight="bold"))
+            overview_title.pack(pady=5, anchor="w", padx=10)
+            
+            overview_items = [
+                ("👥 Eindeutige Kunden", stats.get('unique_customers', 0)),
+                ("🚗 Eindeutige Fahrzeuge (FIN)", stats.get('unique_vehicles', 0)),
+                ("📄 Legacy-Dokumente", stats.get('legacy_count', 0)),
+                ("❓ Unklare Legacy-Aufträge", stats.get('unclear_legacy_count', 0)),
+                ("📊 Durchschn. Confidence", f"{stats.get('avg_confidence', 0):.2f}")
+            ]
+            
+            for label, value in overview_items:
+                row = ctk.CTkFrame(overview_frame)
+                row.pack(fill="x", padx=10, pady=2)
+                
+                ctk.CTkLabel(row, text=label, width=250, anchor="w").pack(side="left", padx=5)
+                ctk.CTkLabel(row, text=str(value), font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            
+            # Nach Status
+            status_frame = ctk.CTkFrame(scroll_frame)
+            status_frame.pack(fill="x", pady=10)
+            
+            status_title = ctk.CTkLabel(status_frame, text="Nach Status:", 
+                                       font=ctk.CTkFont(size=16, weight="bold"))
+            status_title.pack(pady=5, anchor="w", padx=10)
+            
+            for status, count in stats['by_status'].items():
+                status_color = {
+                    'success': 'green',
+                    'unclear': 'orange',
+                    'error': 'red'
+                }.get(status, 'gray')
+                
+                row = ctk.CTkFrame(status_frame)
+                row.pack(fill="x", padx=10, pady=2)
+                
+                ctk.CTkLabel(row, text=f"• {status}:", width=150, anchor="w").pack(side="left", padx=5)
+                ctk.CTkLabel(row, text=str(count), font=ctk.CTkFont(weight="bold"),
+                           text_color=status_color).pack(side="left", padx=5)
+                
+                # Prozentsatz
+                percent = (count / stats['total'] * 100) if stats['total'] > 0 else 0
+                ctk.CTkLabel(row, text=f"({percent:.1f}%)", text_color="gray").pack(side="left", padx=5)
+            
+            # Top Dokumenttypen
+            if stats['by_type']:
+                type_frame = ctk.CTkFrame(scroll_frame)
+                type_frame.pack(fill="x", pady=10)
+                
+                type_title = ctk.CTkLabel(type_frame, text="Dokumenttypen:", 
+                                         font=ctk.CTkFont(size=16, weight="bold"))
+                type_title.pack(pady=5, anchor="w", padx=10)
+                
+                for doc_type, count in list(stats['by_type'].items())[:15]:
+                    row = ctk.CTkFrame(type_frame)
+                    row.pack(fill="x", padx=10, pady=2)
+                    
+                    ctk.CTkLabel(row, text=f"• {doc_type or 'N/A'}:", width=200, anchor="w").pack(side="left", padx=5)
+                    ctk.CTkLabel(row, text=str(count), font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+                    
+                    percent = (count / stats['total'] * 100) if stats['total'] > 0 else 0
+                    ctk.CTkLabel(row, text=f"({percent:.1f}%)", text_color="gray").pack(side="left", padx=5)
+            
+            # Nach Jahr
+            if stats['by_year']:
+                year_frame = ctk.CTkFrame(scroll_frame)
+                year_frame.pack(fill="x", pady=10)
+                
+                year_title = ctk.CTkLabel(year_frame, text="Nach Jahr:", 
+                                         font=ctk.CTkFont(size=16, weight="bold"))
+                year_title.pack(pady=5, anchor="w", padx=10)
+                
+                for jahr, count in list(stats['by_year'].items())[:15]:
+                    row = ctk.CTkFrame(year_frame)
+                    row.pack(fill="x", padx=10, pady=2)
+                    
+                    ctk.CTkLabel(row, text=f"• {jahr}:", width=100, anchor="w").pack(side="left", padx=5)
+                    ctk.CTkLabel(row, text=str(count), font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+                    
+                    percent = (count / stats['total'] * 100) if stats['total'] > 0 else 0
+                    ctk.CTkLabel(row, text=f"({percent:.1f}%)", text_color="gray").pack(side="left", padx=5)
+            
+            # Schließen-Button
+            close_btn = ctk.CTkButton(scroll_frame, text="Schließen", 
+                                     command=stats_window.destroy, width=200)
+            close_btn.pack(pady=20)
+            
+        except Exception as e:
+            print(f"Fehler beim Anzeigen der Statistiken: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Fehler", f"Fehler beim Laden der Statistiken:\n{str(e)}")
     
     def _display_search_results(self, results: List[Dict[str, Any]]):
         """Zeigt die Suchergebnisse in der Tabelle an."""
@@ -1384,6 +1664,10 @@ class MainWindow(ctk.CTk):
                 print(f"❌ Konfiguration unvollständig für: {filename}")
                 return
             
+            # Zeige "wird verarbeitet" Status
+            self._add_result_row(filename, {}, "⏳ Wird verarbeitet...", "yellow")
+            self.process_status.configure(text=f"🔄 Verarbeite: {filename}", text_color="blue")
+            
             # Legacy-Resolver initialisieren
             from services.legacy_resolver import LegacyResolver
             from services.vehicles import VehicleManager
@@ -1424,13 +1708,15 @@ class MainWindow(ctk.CTk):
             if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
                 self.document_index.add_unclear_legacy(target_path, analysis)
             
-            # Ergebnis in GUI anzeigen
-            self._add_result_row(filename, analysis, status, color)
+            # Aktualisiere Zeile mit finalem Ergebnis
+            self._update_result_row(filename, analysis, status, color)
             
             # Status aktualisieren
             self.process_status.configure(text=f"Letztes Dokument: {filename} - {status}")
             
-            # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+            # Cache für Such-Daten invalidieren
+            self._search_doc_types = []
+            self._search_years = []
             self.tabs_data_loaded["Suche"] = False
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
             
@@ -1439,6 +1725,9 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             print(f"❌ Fehler beim Verarbeiten von {file_path}: {e}")
             log_error(file_path, str(e))
+            # Zeige Fehler in GUI
+            filename = os.path.basename(file_path)
+            self._update_result_row(filename, {}, f"✗ Fehler: {str(e)}", "red")
     
     def load_unclear_legacy_entries(self):
         """Lädt unklare Legacy-Einträge aus der Datenbank (Thread-sicher)."""
@@ -1691,7 +1980,9 @@ class MainWindow(ctk.CTk):
             # Status aktualisieren
             messagebox.showinfo("Erfolg", f"Auftrag erfolgreich Kunde {kunden_nr} zugeordnet!")
             
-            # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
+            # Cache für Such-Daten invalidieren
+            self._search_doc_types = []
+            self._search_years = []
             self.tabs_data_loaded["Suche"] = False
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
             

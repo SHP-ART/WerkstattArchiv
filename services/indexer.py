@@ -255,6 +255,7 @@ class DocumentIndex:
               auftrag_nr: Optional[str] = None,
               dokument_typ: Optional[str] = None,
               jahr: Optional[int] = None,
+              monat: Optional[int] = None,
               kunden_name: Optional[str] = None,
               dateiname: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -265,6 +266,7 @@ class DocumentIndex:
             auftrag_nr: Auftragsnummer (exakte Suche)
             dokument_typ: Dokumenttyp (exakte Suche)
             jahr: Jahr (exakte Suche)
+            monat: Monat (exakte Suche, 1-12)
             kunden_name: Kundenname (LIKE-Suche)
             dateiname: Dateiname (LIKE-Suche)
             
@@ -293,6 +295,11 @@ class DocumentIndex:
         if jahr:
             query += " AND jahr = ?"
             params.append(jahr)
+        
+        if monat:
+            # Filtere nach Monat basierend auf dem verarbeitet_am Datum
+            query += " AND CAST(strftime('%m', verarbeitet_am) AS INTEGER) = ?"
+            params.append(monat)
         
         if kunden_name:
             query += " AND kunden_name LIKE ?"
@@ -355,20 +362,21 @@ class DocumentIndex:
             SELECT status, COUNT(*) as count 
             FROM dokumente 
             GROUP BY status
+            ORDER BY count DESC
         """)
         status_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
-        # Nach Dokumenttyp
+        # Nach Dokumenttyp (alle, nicht nur Top 10)
         cursor.execute("""
             SELECT dokument_typ, COUNT(*) as count 
             FROM dokumente 
+            WHERE dokument_typ IS NOT NULL
             GROUP BY dokument_typ 
-            ORDER BY count DESC 
-            LIMIT 10
+            ORDER BY count DESC
         """)
         type_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
-        # Nach Jahr
+        # Nach Jahr (alle Jahre)
         cursor.execute("""
             SELECT jahr, COUNT(*) as count 
             FROM dokumente 
@@ -378,6 +386,26 @@ class DocumentIndex:
         """)
         year_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
+        # Legacy-Dokumente
+        cursor.execute("SELECT COUNT(*) FROM dokumente WHERE is_legacy = 1")
+        legacy_count = cursor.fetchone()[0]
+        
+        # Unklare Legacy-Aufträge
+        cursor.execute("SELECT COUNT(*) FROM unclear_legacy WHERE status = 'offen'")
+        unclear_legacy_count = cursor.fetchone()[0]
+        
+        # Anzahl Kunden
+        cursor.execute("SELECT COUNT(DISTINCT kunden_nr) FROM dokumente WHERE kunden_nr IS NOT NULL")
+        unique_customers = cursor.fetchone()[0]
+        
+        # Anzahl Fahrzeuge (FIN)
+        cursor.execute("SELECT COUNT(DISTINCT fin) FROM dokumente WHERE fin IS NOT NULL")
+        unique_vehicles = cursor.fetchone()[0]
+        
+        # Durchschnittliche Confidence
+        cursor.execute("SELECT AVG(confidence) FROM dokumente WHERE confidence IS NOT NULL")
+        avg_confidence = cursor.fetchone()[0] or 0
+        
         conn.close()
         
         return {
@@ -385,6 +413,11 @@ class DocumentIndex:
             "by_status": status_counts,
             "by_type": type_counts,
             "by_year": year_counts,
+            "legacy_count": legacy_count,
+            "unclear_legacy_count": unclear_legacy_count,
+            "unique_customers": unique_customers,
+            "unique_vehicles": unique_vehicles,
+            "avg_confidence": round(avg_confidence, 2) if avg_confidence else 0,
         }
     
     def get_all_document_types(self) -> List[str]:
