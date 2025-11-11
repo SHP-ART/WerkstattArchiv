@@ -302,30 +302,38 @@ def calculate_confidence(kunden_nr: Optional[str], auftrag_nr: Optional[str],
 
 def analyze_document(file_path: str, tesseract_path: Optional[str] = None, 
                     vorlage_name: Optional[str] = None,
-                    vorlagen_manager: Optional[VorlagenManager] = None) -> Dict[str, Any]:
+                    vorlagen_manager: Optional[VorlagenManager] = None,
+                    legacy_resolver=None) -> Dict[str, Any]:
     """
     Analysiert ein Dokument und extrahiert Metadaten.
+    
+    Neu: Unterstützt Legacy-Aufträge ohne Kundennummer.
     
     Args:
         file_path: Pfad zur Dokumentdatei
         tesseract_path: Optionaler Pfad zur Tesseract-Installation
         vorlage_name: Name der zu verwendenden Vorlage (optional)
         vorlagen_manager: VorlagenManager-Instanz (optional)
+        legacy_resolver: LegacyResolver-Instanz für Altaufträge (optional)
         
     Returns:
         Dictionary mit Analyseergebnissen:
         {
             "kunden_nr": str | None,
-            "kunden_name": str | None,  # wird später vom Router gesetzt
+            "kunden_name": str | None,
             "auftrag_nr": str | None,
             "dokument_typ": str,
             "jahr": int | None,
+            "kennzeichen": str | None,
+            "fin": str | None,
             "confidence": float,
             "hinweis": str | None,
-            "vorlage_verwendet": str | None
+            "vorlage_verwendet": str | None,
+            "is_legacy": bool,  # NEU: True wenn Legacy-Auftrag
+            "legacy_match_reason": str | None  # NEU: "fin", "name_plus_details", "unclear"
         }
     """
-        # Text extrahieren
+    # Text extrahieren
     text = extract_text(file_path, tesseract_path)
     
     # Metadaten extrahieren mit Vorlage (wenn vorhanden)
@@ -349,15 +357,43 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
     kennzeichen = extract_kennzeichen(text)
     fin = extract_fin(text)
     
+    # NEU: Legacy-Workflow - Falls keine Kundennummer gefunden
+    is_legacy = False
+    legacy_match_reason = None
+    hinweis = None  # Initialisiere hinweis
+    
+    if not kunden_nr and legacy_resolver:
+        # Dies ist ein Legacy-Auftrag ohne Kundennummer
+        is_legacy = True
+        
+        # Versuche Legacy-Auflösung
+        legacy_match = legacy_resolver.resolve_legacy_customer({
+            "kunden_name": kunden_name,
+            "fin": fin,
+            "kennzeichen": kennzeichen,
+            "plz": None,  # TODO: PLZ-Extraktion hinzufügen falls benötigt
+            "adresse": None  # TODO: Adress-Extraktion hinzufügen falls benötigt
+        })
+        
+        if legacy_match.kunden_nr:
+            # Erfolgreiche Zuordnung
+            kunden_nr = legacy_match.kunden_nr
+            legacy_match_reason = legacy_match.match_reason
+            hinweis = f"Legacy-Auftrag: {legacy_match.confidence_detail}"
+        else:
+            # Keine eindeutige Zuordnung
+            legacy_match_reason = legacy_match.match_reason
+            hinweis = f"Legacy-Auftrag unklar: {legacy_match.confidence_detail}"
+    
     # Confidence berechnen
     confidence = calculate_confidence(kunden_nr, auftrag_nr, dokument_typ, jahr)
     
-    # Hinweis erstellen
-    hinweis = None
-    if not text.strip():
-        hinweis = "Kein Text extrahierbar"
-    elif not kunden_nr:
-        hinweis = "Keine Kundennummer gefunden"
+    # Hinweis erstellen (wenn noch nicht von Legacy-Workflow gesetzt)
+    if not hinweis:
+        if not text.strip():
+            hinweis = "Kein Text extrahierbar"
+        elif not kunden_nr and not is_legacy:
+            hinweis = "Keine Kundennummer gefunden"
     
     result = {
         "kunden_nr": kunden_nr,
@@ -370,6 +406,8 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
         "confidence": confidence,
         "hinweis": hinweis,
         "vorlage_verwendet": vorlage_verwendet,
+        "is_legacy": is_legacy,
+        "legacy_match_reason": legacy_match_reason,
     }
     
     return result

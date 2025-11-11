@@ -38,6 +38,13 @@ Eingang/
 Daten/
 Unklar/
 
+# Beispiel-Auftragsdateien (nicht auf GitHub)
+beispiel_auftraege/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
 # macOS
 .DS_Store
 

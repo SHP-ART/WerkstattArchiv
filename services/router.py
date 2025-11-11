@@ -9,6 +9,7 @@ from typing import Dict, Any, Tuple
 from datetime import datetime
 
 from services.customers import CustomerManager
+from services.filename_generator import generate_filename
 
 
 def build_target_path(analysis_result: Dict[str, Any], root_dir: str, 
@@ -32,22 +33,65 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
     dokument_typ = analysis_result.get("dokument_typ", "Dokument")
     jahr = analysis_result.get("jahr")
     confidence = analysis_result.get("confidence", 0.0)
+    is_legacy = analysis_result.get("is_legacy", False)
+    legacy_match_reason = analysis_result.get("legacy_match_reason")
     
+    # Legacy-Workflow: Unklare Altaufträge
+    if is_legacy and legacy_match_reason == "unclear":
+        # Legacy-Auftrag konnte nicht zugeordnet werden
+        # → in Altbestand/Unklar/[Jahr]/
+        if jahr is None:
+            jahr = datetime.now().year
+        
+        filename = generate_filename(analysis_result)
+        # Füge "_Altauftrag_Unklar" Marker hinzu
+        filename = filename.replace(".pdf", "_Altauftrag_Unklar.pdf")
+        
+        altbestand_path = os.path.join(root_dir, "Altbestand", "Unklar", str(jahr), filename)
+        return altbestand_path, False
+    
+    # Legacy-Workflow: Eindeutig zugeordnete Altaufträge
+    if is_legacy and kunden_nr:
+        # Legacy-Auftrag wurde erfolgreich zugeordnet (via FIN oder Name+Details)
+        # Behandlung wie neue Aufträge, aber mit "_Altauftrag" Marker
+        
+        # Kundenname ermitteln
+        kunden_name = customer_manager.get_customer_name(kunden_nr)
+        if not kunden_name:
+            # Kunde nicht in Datenbank → unklar (sollte nicht passieren)
+            filename = generate_filename(analysis_result)
+            filename = filename.replace(".pdf", "_Altauftrag_Unklar.pdf")
+            altbestand_path = os.path.join(unclear_dir, filename)
+            return altbestand_path, False
+        
+        analysis_result["kunden_name"] = kunden_name
+        
+        if jahr is None:
+            jahr = datetime.now().year
+        
+        filename = generate_filename(analysis_result)
+        # Marker für Legacy-Aufträge
+        filename = filename.replace(".pdf", "_Altauftrag.pdf")
+        
+        # Ablage wie normale Aufträge
+        kunde_ordner = f"{kunden_nr} - {kunden_name}"
+        target_path = os.path.join(root_dir, "Kunde", kunde_ordner, str(jahr), filename)
+        return target_path, True
+    
+    # Normale Workflow (mit Kundennummer)
     # Prüfe ob Dokument unklar ist
     is_clear = kunden_nr is not None and confidence >= 0.6
     
     if not is_clear or kunden_nr is None:
-        # Unklar → in unclear_dir
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{dokument_typ}.pdf"
+        # Unklar → in unclear_dir mit standardisiertem Namen
+        filename = generate_filename(analysis_result)
         return os.path.join(unclear_dir, filename), False
     
     # Kundenname ermitteln (kunden_nr ist hier garantiert nicht None)
     kunden_name = customer_manager.get_customer_name(kunden_nr)
     if not kunden_name:
         # Kunde nicht in Datenbank → unklar
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{dokument_typ}.pdf"
+        filename = generate_filename(analysis_result)
         return os.path.join(unclear_dir, filename), False
     
     # Update analysis_result mit Kundenname
@@ -57,12 +101,8 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
     if jahr is None:
         jahr = datetime.now().year
     
-    # Dateiname aufbauen
-    if auftrag_nr:
-        filename = f"{auftrag_nr}_{dokument_typ}.pdf"
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{dokument_typ}.pdf"
+    # Dateiname mit neuem Schema generieren
+    filename = generate_filename(analysis_result)
     
     # Pfad aufbauen: [ROOT]/Kunde/[Kundennummer] - [Kundenname]/[Jahr]/[Dateiname]
     kunde_ordner = f"{kunden_nr} - {kunden_name}"
