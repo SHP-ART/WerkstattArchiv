@@ -46,6 +46,7 @@ class MainWindow(ctk.CTk):
         self.vorlagen_manager = VorlagenManager()
         self.pattern_manager = PatternManager()
         self.watchdog_observer = None
+        self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
         
         # Tab-Erstellungs-Flags (Lazy Loading)
         self.tabs_created = {
@@ -54,14 +55,19 @@ class MainWindow(ctk.CTk):
             "Suche": False,
             "Unklare Dokumente": False,
             "Unklare Legacy-Aufträge": False,
-            "Regex-Patterns": False
+            "Regex-Patterns": False,
+            "System": False
         }
-        
+
         # Daten-Lade-Flags (für Refresh)
         self.tabs_data_loaded = {
             "Suche": False,
             "Unklare Legacy-Aufträge": False
         }
+
+        # Cache für Dropdown-Liste
+        self._customer_dropdown_cache = None
+        self._customer_dropdown_cache_time = 0
         
         # Version importieren
         try:
@@ -125,26 +131,28 @@ class MainWindow(ctk.CTk):
                 self.tabs_created["System"] = True
         
         # Daten laden wenn Tab bereits erstellt aber Daten noch nicht geladen
-        if current_tab == "Suche" and not self.tabs_data_loaded["Suche"]:
-            # Lade Dokumenttypen und Jahre asynchron
-            def load_search_data():
-                doc_types = ["Alle"] + self.document_index.get_all_document_types()
-                years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-                
-                # Update GUI im Haupt-Thread
-                self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
-                self.after(0, lambda: self.search_jahr.configure(values=years))
-            
-            # Starte in Thread
-            thread = threading.Thread(target=load_search_data, daemon=True)
-            thread.start()
-            self.tabs_data_loaded["Suche"] = True
+        if current_tab == "Suche":
+            if not self.tabs_data_loaded["Suche"]:
+                # Lade Dokumenttypen und Jahre asynchron
+                def load_search_data():
+                    doc_types = ["Alle"] + self.document_index.get_all_document_types()
+                    years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+
+                    # Update GUI im Haupt-Thread
+                    self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
+                    self.after(0, lambda: self.search_jahr.configure(values=years))
+
+                # Starte in Thread
+                thread = threading.Thread(target=load_search_data, daemon=True)
+                thread.start()
+                self.tabs_data_loaded["Suche"] = True
         
-        elif current_tab == "Unklare Legacy-Aufträge" and not self.tabs_data_loaded["Unklare Legacy-Aufträge"]:
-            # Lade Legacy-Einträge asynchron
-            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
-            thread = threading.Thread(target=self.load_unclear_legacy_entries, daemon=True)
-            thread.start()
+        elif current_tab == "Unklare Legacy-Aufträge":
+            # Lade Legacy-Einträge nur wenn noch nicht geladen
+            if not self.tabs_data_loaded["Unklare Legacy-Aufträge"]:
+                self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+                thread = threading.Thread(target=self.load_unclear_legacy_entries, daemon=True)
+                thread.start()
     
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
@@ -340,9 +348,9 @@ class MainWindow(ctk.CTk):
         self.vorlage_info.pack(side="left", padx=10)
         self._update_vorlage_info()
         
-        scan_btn = ctk.CTkButton(control_frame, text="Eingangsordner scannen",
+        self.scan_btn = ctk.CTkButton(control_frame, text="Eingangsordner scannen",
                                 command=self.scan_input_folder)
-        scan_btn.pack(side="left", padx=10, pady=10)
+        self.scan_btn.pack(side="left", padx=10, pady=10)
         
         # Watchdog Controls (wenn verfügbar)
         if WATCHDOG_AVAILABLE:
@@ -760,23 +768,59 @@ class MainWindow(ctk.CTk):
         test_btn.pack(pady=10)
     
     def browse_path(self, key: str):
-        """Öffnet Dialog zur Pfadauswahl."""
-        if key == "customers_file":
-            path = filedialog.askopenfilename(
-                title="Kundendatei auswählen",
-                filetypes=[("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")]
-            )
-        elif key == "tesseract_path":
-            path = filedialog.askopenfilename(
-                title="Tesseract-Executable auswählen",
-                filetypes=[("Executable", "*.exe"), ("Alle Dateien", "*.*")]
-            )
-        else:
-            path = filedialog.askdirectory(title=f"{key} auswählen")
-        
-        if path:
-            self.entries[key].delete(0, "end")
-            self.entries[key].insert(0, path)
+        """Öffnet Dialog zur Pfadauswahl mit intelligentem Start-Verzeichnis."""
+        # Cursor auf "Warten" setzen für visuelles Feedback
+        self.configure(cursor="watch")
+        self.update_idletasks()
+
+        try:
+            # Aktuellen Wert holen für intelligentes initialdir
+            current_value = self.entries[key].get().strip()
+
+            # Initialdir bestimmen
+            if current_value and os.path.exists(current_value):
+                if os.path.isfile(current_value):
+                    initial_dir = os.path.dirname(current_value)
+                else:
+                    initial_dir = current_value
+            elif current_value and os.path.dirname(current_value):
+                # Falls Pfad nicht existiert, nimm das übergeordnete Verzeichnis
+                parent = os.path.dirname(current_value)
+                if os.path.exists(parent):
+                    initial_dir = parent
+                else:
+                    initial_dir = os.path.expanduser("~")
+            else:
+                # Fallback: Home-Verzeichnis
+                initial_dir = os.path.expanduser("~")
+
+            # Dialog öffnen mit optimiertem initialdir
+            if key == "customers_file":
+                path = filedialog.askopenfilename(
+                    title="Kundendatei auswählen",
+                    filetypes=[("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")],
+                    initialdir=initial_dir
+                )
+            elif key == "tesseract_path":
+                path = filedialog.askopenfilename(
+                    title="Tesseract-Executable auswählen",
+                    filetypes=[("Executable", "*.exe"), ("Alle Dateien", "*.*")],
+                    initialdir=initial_dir
+                )
+            else:
+                path = filedialog.askdirectory(
+                    title=f"{key} auswählen",
+                    initialdir=initial_dir,
+                    mustexist=False
+                )
+
+            if path:
+                self.entries[key].delete(0, "end")
+                self.entries[key].insert(0, path)
+
+        finally:
+            # Cursor zurücksetzen
+            self.configure(cursor="")
     
     def save_settings(self):
         """Speichert die Einstellungen in config.json."""
@@ -801,8 +845,11 @@ class MainWindow(ctk.CTk):
     def reload_customers(self):
         """Lädt die Kundendatenbank neu."""
         self.customer_manager.load_customers()
+        # Cache invalidieren
+        self._customer_dropdown_cache = None
+        self._customer_dropdown_cache_time = 0
         self.settings_status.configure(
-            text=f"✓ {len(self.customer_manager.customers)} Kunden geladen", 
+            text=f"✓ {len(self.customer_manager.customers)} Kunden geladen",
             text_color="green"
         )
     
@@ -822,16 +869,31 @@ class MainWindow(ctk.CTk):
     
     def scan_input_folder(self):
         """Scannt den Eingangsordner und verarbeitet alle Dokumente."""
+        # Verhindere Doppelverarbeitung
+        if self.is_processing:
+            messagebox.showwarning("Verarbeitung läuft",
+                                 "Es läuft bereits eine Verarbeitung. Bitte warten Sie, bis sie abgeschlossen ist.")
+            return
+
         input_dir = self.config.get("input_dir")
-        
+
         if not input_dir or not os.path.exists(input_dir):
-            messagebox.showerror("Fehler", 
+            messagebox.showerror("Fehler",
                                "Eingangsordner nicht gefunden. Bitte Einstellungen prüfen.")
             return
-        
+
+        # Setze Processing-Flag
+        self.is_processing = True
+
+        # Button deaktivieren während Verarbeitung
+        self.scan_btn.configure(state="disabled", text="⏳ Verarbeite...")
+
         # Status aktualisieren
-        self.process_status.configure(text="Verarbeitung läuft...")
-        
+        self.process_status.configure(text="🔄 Verarbeitung läuft...", text_color="blue")
+
+        # GUI aktualisieren
+        self.update_idletasks()
+
         # In separatem Thread verarbeiten
         thread = threading.Thread(target=self._process_documents)
         thread.daemon = True
@@ -843,25 +905,35 @@ class MainWindow(ctk.CTk):
         root_dir = self.config.get("root_dir")
         unclear_dir = self.config.get("unclear_dir")
         tesseract_path = self.config.get("tesseract_path")
-        
+
         # Validierung
         if not input_dir or not isinstance(input_dir, str):
-            self.process_status.configure(text="Fehler: Eingangsordner nicht konfiguriert")
+            self.after(0, lambda: self.process_status.configure(text="Fehler: Eingangsordner nicht konfiguriert", text_color="red"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.is_processing = False
             return
-        
+
         if not root_dir or not isinstance(root_dir, str):
-            self.process_status.configure(text="Fehler: Basis-Verzeichnis nicht konfiguriert")
+            self.after(0, lambda: self.process_status.configure(text="Fehler: Basis-Verzeichnis nicht konfiguriert", text_color="red"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.is_processing = False
             return
-            
+
         if not unclear_dir or not isinstance(unclear_dir, str):
-            self.process_status.configure(text="Fehler: Unklar-Ordner nicht konfiguriert")
+            self.after(0, lambda: self.process_status.configure(text="Fehler: Unklar-Ordner nicht konfiguriert", text_color="red"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.is_processing = False
             return
-        
-        # Alte Ergebnisse löschen
-        for widget in self.results_container.winfo_children():
-            widget.destroy()
-        
-        self.unclear_documents.clear()
+
+        # Alte Ergebnisse löschen (im Haupt-Thread)
+        def clear_results():
+            # Optimierung: Verwende winfo_children nur einmal
+            children = self.results_container.winfo_children()
+            for widget in children:
+                widget.destroy()
+            self.unclear_documents.clear()
+
+        self.after_idle(clear_results)
         
         # Dateien im Eingangsordner finden
         files = []
@@ -873,19 +945,28 @@ class MainWindow(ctk.CTk):
                     files.append(file_path)
         
         if not files:
-            self.process_status.configure(text="Keine Dateien gefunden")
+            self.after(0, lambda: self.process_status.configure(text="Keine Dateien gefunden", text_color="orange"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.is_processing = False
             return
-        
+
+        # Status-Update: Anzahl Dateien
+        self.after(0, lambda: self.process_status.configure(
+            text=f"🔄 Verarbeite {len(files)} Datei(en)...",
+            text_color="blue"
+        ))
+
+        # Legacy-Resolver nur EINMAL initialisieren (nicht für jede Datei!)
+        from services.legacy_resolver import LegacyResolver
+        from services.vehicles import VehicleManager
+        vehicle_manager = VehicleManager()
+        legacy_resolver = LegacyResolver(self.customer_manager, vehicle_manager)
+
         # Dateien verarbeiten
         for i, file_path in enumerate(files):
             filename = os.path.basename(file_path)
-            
+
             try:
-                # Legacy-Resolver initialisieren
-                from services.legacy_resolver import LegacyResolver
-                from services.vehicles import VehicleManager
-                vehicle_manager = VehicleManager()
-                legacy_resolver = LegacyResolver(self.customer_manager, vehicle_manager)
                 
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
@@ -928,22 +1009,38 @@ class MainWindow(ctk.CTk):
                 if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
                     self.document_index.add_unclear_legacy(target_path, analysis)
                 
-                # Ergebnis in Tabelle anzeigen
-                self._add_result_row(filename, analysis, status, color)
-                
+                # Ergebnis in Tabelle anzeigen (im Haupt-Thread)
+                # Verwende after_idle statt after(0) für bessere Performance
+                self.after_idle(lambda f=filename, a=analysis, s=status, c=color: self._add_result_row(f, a, s, c))
+
+                # Progress-Update nur alle 100ms oder bei letzter Datei
+                if i == len(files) - 1 or (i % 5 == 0):  # Nur jede 5. Datei updaten
+                    self.after_idle(lambda idx=i: self.process_status.configure(
+                        text=f"🔄 Verarbeite {idx+1}/{len(files)}...",
+                        text_color="blue"
+                    ))
+
             except Exception as e:
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
-                self._add_result_row(filename, {}, f"✗ Fehler: {e}", "red")
-        
-        # Status aktualisieren
-        self.process_status.configure(
-            text=f"Fertig: {len(files)} Dateien verarbeitet"
-        )
-        
-        # Unklare Dokumente anzeigen
-        self._update_unclear_tab()
-        
+                # Fehler anzeigen (im Haupt-Thread)
+                self.after(0, lambda f=filename, err=str(e): self._add_result_row(f, {}, f"✗ Fehler: {err}", "red"))
+
+        # Status aktualisieren (im Haupt-Thread)
+        self.after(0, lambda: self.process_status.configure(
+            text=f"✓ Fertig: {len(files)} Datei(en) verarbeitet",
+            text_color="green"
+        ))
+
+        # Button wieder aktivieren (im Haupt-Thread)
+        self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+
+        # Processing-Flag zurücksetzen
+        self.is_processing = False
+
+        # Unklare Dokumente anzeigen (im Haupt-Thread)
+        self.after(0, self._update_unclear_tab)
+
         # Daten-Flags zurücksetzen (damit sie beim nächsten Öffnen neu laden)
         self.tabs_data_loaded["Suche"] = False
         self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
@@ -1069,32 +1166,46 @@ class MainWindow(ctk.CTk):
         kunden_name = self.search_kunden_name.get().strip() or None
         auftrag_nr = self.search_auftrag_nr.get().strip() or None
         dateiname = self.search_dateiname.get().strip() or None
-        
+
         dokument_typ = self.search_dokument_typ.get()
         if dokument_typ == "Alle":
             dokument_typ = None
-        
+
         jahr_str = self.search_jahr.get()
         jahr = int(jahr_str) if jahr_str != "Alle" else None
-        
-        # Suche durchführen
-        results = self.document_index.search(
-            kunden_nr=kunden_nr,
-            auftrag_nr=auftrag_nr,
-            dokument_typ=dokument_typ,
-            jahr=jahr,
-            kunden_name=kunden_name,
-            dateiname=dateiname
-        )
-        
-        # Ergebnisse anzeigen
-        self._display_search_results(results)
-        
-        # Status aktualisieren
-        self.search_status.configure(
-            text=f"{len(results)} Dokument(e) gefunden",
-            text_color="green" if results else "orange"
-        )
+
+        # Debug: Zeige Suchparameter im Log
+        print(f"🔍 Suche mit: kunden_nr={kunden_nr}, kunden_name={kunden_name}, auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}, jahr={jahr}, dateiname={dateiname}")
+
+        try:
+            # Suche durchführen
+            results = self.document_index.search(
+                kunden_nr=kunden_nr,
+                auftrag_nr=auftrag_nr,
+                dokument_typ=dokument_typ,
+                jahr=jahr,
+                kunden_name=kunden_name,
+                dateiname=dateiname
+            )
+
+            print(f"✓ Suche erfolgreich: {len(results)} Ergebnisse")
+
+            # Ergebnisse anzeigen
+            self._display_search_results(results)
+
+            # Status aktualisieren
+            self.search_status.configure(
+                text=f"{len(results)} Dokument(e) gefunden",
+                text_color="green" if results else "orange"
+            )
+        except Exception as e:
+            print(f"✗ Fehler bei Suche: {e}")
+            import traceback
+            traceback.print_exc()
+            self.search_status.configure(
+                text=f"Fehler bei Suche: {str(e)}",
+                text_color="red"
+            )
     
     def clear_search(self):
         """Setzt alle Suchfelder zurück."""
@@ -1359,10 +1470,10 @@ class MainWindow(ctk.CTk):
             # Alte Widgets löschen
             for widget in self.legacy_container.winfo_children():
                 widget.destroy()
-            
+
             if not entries:
                 no_entries = ctk.CTkLabel(
-                    self.legacy_container, 
+                    self.legacy_container,
                     text="✓ Keine unklaren Legacy-Aufträge vorhanden",
                     font=ctk.CTkFont(size=14),
                     text_color="green"
@@ -1370,11 +1481,14 @@ class MainWindow(ctk.CTk):
                 no_entries.pack(pady=20)
                 self.legacy_status.configure(text="0 offene Einträge", text_color="green")
                 return
-            
-            # Einträge anzeigen
+
+            # Kundenliste einmal laden (schneller als für jeden Eintrag einzeln)
+            kunden_liste = self._get_customer_dropdown_list()
+
+            # Einträge anzeigen mit gecachter Kundenliste
             for entry in entries:
-                self._add_legacy_entry_row(entry)
-            
+                self._add_legacy_entry_row(entry, kunden_liste)
+
             self.legacy_status.configure(text=f"{len(entries)} offene Einträge", text_color="orange")
         
         # Update GUI im Haupt-Thread
@@ -1383,28 +1497,34 @@ class MainWindow(ctk.CTk):
         else:
             update_gui()
     
-    def _add_legacy_entry_row(self, entry: Dict[str, Any]):
-        """Fügt eine Zeile für einen Legacy-Eintrag hinzu."""
+    def _add_legacy_entry_row(self, entry: Dict[str, Any], kunden_liste: Optional[List[str]] = None):
+        """
+        Fügt eine Zeile für einen Legacy-Eintrag hinzu.
+
+        Args:
+            entry: Legacy-Eintrag Daten
+            kunden_liste: Optionale vorgefertigte Kundenliste (Performance-Optimierung)
+        """
         row_frame = ctk.CTkFrame(self.legacy_container)
         row_frame.pack(fill="x", pady=2)
-        
+
         # Daten vorbereiten
         dateiname = entry.get("dateiname", "N/A")
         if len(dateiname) > 15:
             dateiname = dateiname[:12] + "..."
-        
+
         kunden_name = entry.get("kunden_name", "N/A")
         if len(kunden_name) > 15:
             kunden_name = kunden_name[:12] + "..."
-        
+
         fin = entry.get("fin", "N/A")
         if fin and len(fin) > 17:
             fin = fin[:14] + "..."
-        
+
         kennzeichen = entry.get("kennzeichen", "N/A")
         if kennzeichen and len(kennzeichen) > 12:
             kennzeichen = kennzeichen[:9] + "..."
-        
+
         values = [
             dateiname,
             entry.get("auftrag_nr", "N/A") or "N/A",
@@ -1416,15 +1536,16 @@ class MainWindow(ctk.CTk):
             entry.get("dokument_typ", "N/A") or "N/A",
             entry.get("match_reason", "unclear"),
         ]
-        
+
         widths = [120, 80, 90, 120, 140, 90, 50, 80, 100]
-        
+
         for i, (value, width) in enumerate(zip(values, widths)):
             label = ctk.CTkLabel(row_frame, text=value, width=width, anchor="w")
             label.grid(row=0, column=i, padx=2, pady=2, sticky="w")
-        
-        # Kunden-Dropdown
-        kunden_liste = self._get_customer_dropdown_list()
+
+        # Kunden-Dropdown (verwende übergebene Liste oder lade neu)
+        if kunden_liste is None:
+            kunden_liste = self._get_customer_dropdown_list()
         kunden_dropdown = ctk.CTkComboBox(row_frame, width=200, values=kunden_liste)
         kunden_dropdown.set("Kunde auswählen...")
         kunden_dropdown.grid(row=0, column=len(values), padx=2, pady=2)
@@ -1438,15 +1559,38 @@ class MainWindow(ctk.CTk):
         )
         assign_btn.grid(row=0, column=len(values)+1, padx=2, pady=2)
     
-    def _get_customer_dropdown_list(self) -> List[str]:
-        """Erstellt eine Liste von Kunden für das Dropdown."""
+    def _get_customer_dropdown_list(self, use_cache: bool = True) -> List[str]:
+        """
+        Erstellt eine Liste von Kunden für das Dropdown.
+
+        Args:
+            use_cache: Wenn True, wird gecachte Liste verwendet (schneller)
+
+        Returns:
+            Sortierte Liste von Kundeneinträgen im Format "Nr - Name"
+        """
+        import time
+
+        # Cache verwenden wenn verfügbar und nicht zu alt (max 60 Sekunden)
+        current_time = time.time()
+        if use_cache and self._customer_dropdown_cache is not None:
+            if current_time - self._customer_dropdown_cache_time < 60:
+                return self._customer_dropdown_cache
+
+        # Neue Liste erstellen
         customers = []
         for nr, kunde in self.customer_manager.customers.items():
             # Format: "12345 - Mustermann, Max"
             name = kunde.name if hasattr(kunde, 'name') else "Unbekannt"
             customers.append(f"{nr} - {name}")
-        
-        return sorted(customers)
+
+        sorted_customers = sorted(customers)
+
+        # Cache aktualisieren
+        self._customer_dropdown_cache = sorted_customers
+        self._customer_dropdown_cache_time = current_time
+
+        return sorted_customers
     
     def _assign_legacy_entry(self, entry_id: int, dropdown: ctk.CTkComboBox, row_frame: ctk.CTkFrame):
         """Ordnet einen Legacy-Eintrag einem Kunden zu."""

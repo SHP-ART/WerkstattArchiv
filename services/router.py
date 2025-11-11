@@ -43,10 +43,11 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
         if jahr is None:
             jahr = datetime.now().year
         
+        # Passe Dokumenttyp für unklare Legacy-Aufträge an
+        original_typ = analysis_result.get("dokument_typ", "Dokument")
+        analysis_result["dokument_typ"] = f"Altauftrag-Unklar"
         filename = generate_filename(analysis_result)
-        # Füge "_Altauftrag_Unklar" Marker hinzu
-        filename = filename.replace(".pdf", "_Altauftrag_Unklar.pdf")
-        
+
         altbestand_path = os.path.join(root_dir, "Altbestand", "Unklar", str(jahr), filename)
         return altbestand_path, False
     
@@ -59,8 +60,8 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
         kunden_name = customer_manager.get_customer_name(kunden_nr)
         if not kunden_name:
             # Kunde nicht in Datenbank → unklar (sollte nicht passieren)
+            analysis_result["dokument_typ"] = "Altauftrag-Unklar"
             filename = generate_filename(analysis_result)
-            filename = filename.replace(".pdf", "_Altauftrag_Unklar.pdf")
             altbestand_path = os.path.join(unclear_dir, filename)
             return altbestand_path, False
         
@@ -69,9 +70,9 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
         if jahr is None:
             jahr = datetime.now().year
         
+        # Passe Dokumenttyp für Legacy-Aufträge an
+        analysis_result["dokument_typ"] = "Altauftrag"
         filename = generate_filename(analysis_result)
-        # Marker für Legacy-Aufträge
-        filename = filename.replace(".pdf", "_Altauftrag.pdf")
         
         # Ablage wie normale Aufträge
         kunde_ordner = f"{kunden_nr} - {kunden_name}"

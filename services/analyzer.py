@@ -280,7 +280,22 @@ def extract_datum(text: str) -> Optional[int]:
     """Extrahiert das erste Datum und gibt das Jahr zurück."""
     match = re.search(get_pattern("datum"), text)
     if match:
-        jahr = int(match.group(3))
+        # Das Pattern kann entweder 3 Gruppen (TT, MM, JJJJ) oder 1 Gruppe (TT.MM.JJJJ) haben
+        if match.lastindex and match.lastindex >= 3:
+            # Altes Format mit 3 separaten Gruppen
+            jahr = int(match.group(3))
+        else:
+            # Neues Format mit einer Gruppe - extrahiere Jahr aus String
+            datum_str = match.group(1)
+            # Jahr ist der letzte Teil nach . oder /
+            jahr_match = re.search(r'(\d{2,4})$', datum_str)
+            if not jahr_match:
+                return None
+            jahr = int(jahr_match.group(1))
+            # 2-stelliges Jahr zu 4-stellig konvertieren
+            if jahr < 100:
+                jahr = 2000 + jahr if jahr <= 50 else 1900 + jahr
+
         # Plausibilitätsprüfung
         current_year = datetime.now().year
         if 2000 <= jahr <= current_year + 1:
@@ -382,8 +397,8 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
         vorlage_verwendet = vorlage_result["vorlage_verwendet"]
     else:
         # Fallback auf alte Methode
-        kunden_nr = extract_kunden_nr(text)
-        auftrag_nr = extract_auftrag_nr(text)
+        kunden_nr = extract_kundennummer(text)
+        auftrag_nr = extract_auftragsnummer(text)
         jahr = extract_datum(text)
         dokument_typ = extract_dokument_typ(text)
         vorlage_verwendet = "Standard (Legacy)"
