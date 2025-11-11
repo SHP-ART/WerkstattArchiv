@@ -1,0 +1,7 @@
+{
+  "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Daten",
+  "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
+  "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
+  "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
+  "tesseract_path": null
+}

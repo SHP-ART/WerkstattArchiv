@@ -1,0 +1,46 @@
+# .gitignore für WerkstattArchiv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logfiles
+*.log
+*.txt
+!requirements.txt
+!README.md
+!QUICK_START.txt
+!WINDOWS_INSTALLATION.md
+
+# Datenbank
+*.db
+*.db-journal
+
+# Config (kann private Pfade enthalten)
+# config.json
+
+# Testdaten
+test_data/
+Eingang/
+Daten/
+Unklar/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini

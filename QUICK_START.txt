@@ -1,0 +1,140 @@
+================================================================================
+                      WERKSTATTARCHIV - QUICK START
+                           Windows Installation
+================================================================================
+
+SCHRITT 1: PYTHON INSTALLIEREN
+-------------------------------
+
+1. Oeffne Browser und gehe zu: https://www.python.org/downloads/
+
+2. Klicke auf den grossen gelben Button "Download Python"
+
+3. Wenn Download fertig, Doppelklick auf die heruntergeladene Datei
+
+4. WICHTIG: Im Installationsfenster UNBEDINGT anhaken:
+   [X] Add Python to PATH
+   
+5. Klicke auf "Install Now"
+
+6. Warte bis Installation fertig
+
+
+SCHRITT 2: WERKSTATTARCHIV INSTALLIEREN
+----------------------------------------
+
+1. Rechtsklick auf die Datei "install.bat"
+
+2. Waehle: "Als Administrator ausfuehren"
+
+3. Ein schwarzes Fenster oeffnet sich
+
+4. Warte 2-5 Minuten bis "Installation abgeschlossen!" erscheint
+
+5. Druecke eine Taste zum Schliessen
+
+
+SCHRITT 3: ORDNER EINRICHTEN
+-----------------------------
+
+1. Doppelklick auf "setup_folders.bat"
+
+2. Erstellt automatisch Ordner unter C:\WerkstattArchiv\
+
+3. Fenster schliesst sich automatisch
+
+
+SCHRITT 4: KUNDENDATEN EINGEBEN
+--------------------------------
+
+1. Oeffne: C:\WerkstattArchiv\config\kunden.csv
+
+2. Bearbeite die Datei (Notepad oder Excel)
+
+3. Eine Zeile pro Kunde, Format:
+   Kundennummer;Kundenname
+   
+   Beispiel:
+   10234;Mueller Max
+   10235;Schmidt GmbH
+   
+4. Speichern und schliessen
+
+
+SCHRITT 5: PROGRAMM STARTEN
+----------------------------
+
+VARIANTE A (Einfach):
+- Doppelklick auf Desktop-Symbol "WerkstattArchiv"
+
+VARIANTE B:
+- Doppelklick auf "start.bat"
+
+
+SCHRITT 6: ERSTE VERWENDUNG
+----------------------------
+
+1. Im Programm, klicke auf Tab "Einstellungen"
+
+2. Klicke auf "Kundendatenbank neu laden"
+
+3. Es sollte stehen: "5 Kunden geladen" (oder deine Anzahl)
+
+4. Klicke auf Tab "Verarbeitung"
+
+5. Lege ein paar Test-PDFs in: C:\WerkstattArchiv\Eingang\
+
+6. Waehle eine Vorlage: "Standard" oder "Alternativ"
+
+7. Klicke auf "Eingangsordner scannen"
+
+8. Warte bis Verarbeitung fertig
+
+9. Sortierte Dokumente findest du in: C:\WerkstattArchiv\Daten\
+
+
+FERTIG!
+-------
+
+Die Anwendung laeuft jetzt!
+
+
+OPTIONALE SCHRITTE
+------------------
+
+OCR fuer gescannte PDFs (optional):
+1. Installiere Tesseract von:
+   https://github.com/UB-Mannheim/tesseract/wiki
+
+2. In WerkstattArchiv -> Tab "Einstellungen"
+   -> Tesseract-Pfad eintragen
+   -> "Einstellungen speichern"
+
+
+HAEUFIGE PROBLEME
+-----------------
+
+Problem: "Python nicht gefunden"
+Loesung: Python neu installieren, "Add to PATH" anhaken!
+
+Problem: "Administrator-Rechte erforderlich"
+Loesung: Rechtsklick auf install.bat -> "Als Administrator ausfuehren"
+
+Problem: "Dokumente werden nicht erkannt"
+Loesung: - Andere Vorlage waehlen (Standard/Alternativ)
+         - Pruefe ob Kundennummer im Dokument steht
+         - Fuer gescannte PDFs: Tesseract installieren
+
+
+KONTAKT
+-------
+
+Bei Problemen:
+1. Schaue in: WerkstattArchiv_log.txt
+2. Lies: WINDOWS_INSTALLATION.md (ausfuehrliche Anleitung)
+3. Erstelle Issue auf GitHub
+
+
+================================================================================
+                         Viel Erfolg!
+================================================================================
