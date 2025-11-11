@@ -48,6 +48,28 @@ class DocumentIndex:
             )
         """)
         
+        # Tabelle für unklare Legacy-Aufträge (manuelle Nachbearbeitung)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS unclear_legacy (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dateiname TEXT NOT NULL,
+                datei_pfad TEXT NOT NULL,
+                auftrag_nr TEXT,
+                auftragsdatum TEXT,
+                kunden_name TEXT,
+                fin TEXT,
+                kennzeichen TEXT,
+                jahr INTEGER,
+                dokument_typ TEXT,
+                match_reason TEXT NOT NULL,
+                hinweis TEXT,
+                erstellt_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                zugeordnet_am TIMESTAMP,
+                zugeordnet_zu_kunden_nr TEXT,
+                status TEXT DEFAULT 'offen'
+            )
+        """)
+        
         # Index für schnellere Suchen
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_kunden_nr 
@@ -67,6 +89,22 @@ class DocumentIndex:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_dokument_typ 
             ON dokumente(dokument_typ)
+        """)
+        
+        # Index für unclear_legacy
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_unclear_status
+            ON unclear_legacy(status)
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_unclear_fin
+            ON unclear_legacy(fin)
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_unclear_auftrag_nr
+            ON unclear_legacy(auftrag_nr)
         """)
         
         conn.commit()
@@ -275,3 +313,147 @@ class DocumentIndex:
         conn.close()
         
         return years
+    
+    def add_unclear_legacy(self, file_path: str, metadata: Dict[str, Any]) -> int:
+        """
+        Fügt einen unklaren Legacy-Auftrag zur Tabelle hinzu.
+        
+        Args:
+            file_path: Pfad zur Datei
+            metadata: Metadaten des Dokuments (aus analyzer)
+            
+        Returns:
+            ID des eingefügten Eintrags
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO unclear_legacy 
+            (dateiname, datei_pfad, auftrag_nr, auftragsdatum, kunden_name, 
+             fin, kennzeichen, jahr, dokument_typ, match_reason, hinweis, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'offen')
+        """, (
+            os.path.basename(file_path),
+            file_path,
+            metadata.get("auftrag_nr"),
+            metadata.get("auftragsdatum"),
+            metadata.get("kunden_name"),
+            metadata.get("fin"),
+            metadata.get("kennzeichen"),
+            metadata.get("jahr"),
+            metadata.get("dokument_typ"),
+            metadata.get("legacy_match_reason", "unclear"),
+            metadata.get("hinweis")
+        ))
+        
+        entry_id = cursor.lastrowid if cursor.lastrowid else 0
+        conn.commit()
+        conn.close()
+        
+        return entry_id
+    
+    def get_unclear_legacy_entries(self, status: str = "offen") -> List[Dict[str, Any]]:
+        """
+        Holt alle unklaren Legacy-Einträge.
+        
+        Args:
+            status: Filter nach Status ('offen', 'zugeordnet', 'alle')
+            
+        Returns:
+            Liste von unklaren Legacy-Einträgen
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if status == "alle":
+            query = "SELECT * FROM unclear_legacy ORDER BY erstellt_am DESC"
+            cursor.execute(query)
+        else:
+            query = "SELECT * FROM unclear_legacy WHERE status = ? ORDER BY erstellt_am DESC"
+            cursor.execute(query, (status,))
+        
+        rows = cursor.fetchall()
+        
+        results = []
+        for row in rows:
+            results.append({
+                "id": row["id"],
+                "dateiname": row["dateiname"],
+                "datei_pfad": row["datei_pfad"],
+                "auftrag_nr": row["auftrag_nr"],
+                "auftragsdatum": row["auftragsdatum"],
+                "kunden_name": row["kunden_name"],
+                "fin": row["fin"],
+                "kennzeichen": row["kennzeichen"],
+                "jahr": row["jahr"],
+                "dokument_typ": row["dokument_typ"],
+                "match_reason": row["match_reason"],
+                "hinweis": row["hinweis"],
+                "erstellt_am": row["erstellt_am"],
+                "zugeordnet_am": row["zugeordnet_am"],
+                "zugeordnet_zu_kunden_nr": row["zugeordnet_zu_kunden_nr"],
+                "status": row["status"],
+            })
+        
+        conn.close()
+        return results
+    
+    def assign_unclear_legacy(self, entry_id: int, kunden_nr: str) -> bool:
+        """
+        Ordnet einen unklaren Legacy-Auftrag einem Kunden zu.
+        
+        Args:
+            entry_id: ID des unclear_legacy Eintrags
+            kunden_nr: Kundennummer zur Zuordnung
+            
+        Returns:
+            True bei Erfolg, False bei Fehler
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE unclear_legacy 
+                SET zugeordnet_zu_kunden_nr = ?,
+                    zugeordnet_am = CURRENT_TIMESTAMP,
+                    status = 'zugeordnet'
+                WHERE id = ?
+            """, (kunden_nr, entry_id))
+            
+            conn.commit()
+            success = cursor.rowcount > 0
+        except Exception as e:
+            print(f"Fehler beim Zuordnen: {e}")
+            success = False
+        finally:
+            conn.close()
+        
+        return success
+    
+    def delete_unclear_legacy(self, entry_id: int) -> bool:
+        """
+        Löscht einen unclear_legacy Eintrag (z.B. nach erfolgreichem Verschieben).
+        
+        Args:
+            entry_id: ID des zu löschenden Eintrags
+            
+        Returns:
+            True bei Erfolg
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("DELETE FROM unclear_legacy WHERE id = ?", (entry_id,))
+            conn.commit()
+            success = cursor.rowcount > 0
+        except Exception as e:
+            print(f"Fehler beim Löschen: {e}")
+            success = False
+        finally:
+            conn.close()
+        
+        return success

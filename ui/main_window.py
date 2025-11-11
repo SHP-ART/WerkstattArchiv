@@ -54,12 +54,14 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Verarbeitung")
         self.tabview.add("Suche")
         self.tabview.add("Unklare Dokumente")
+        self.tabview.add("Unklare Legacy-Aufträge")
         
         # Tab-Inhalte erstellen
         self.create_settings_tab()
         self.create_processing_tab()
         self.create_search_tab()
         self.create_unclear_tab()
+        self.create_unclear_legacy_tab()
     
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
@@ -289,6 +291,63 @@ class MainWindow(ctk.CTk):
         self.unclear_container = ctk.CTkFrame(self.unclear_scroll)
         self.unclear_container.pack(fill="both", expand=True)
     
+    def create_unclear_legacy_tab(self):
+        """Erstellt den Tab für unklare Legacy-Aufträge."""
+        tab = self.tabview.tab("Unklare Legacy-Aufträge")
+        
+        # Control-Frame
+        control_frame = ctk.CTkFrame(tab)
+        control_frame.pack(fill="x", padx=10, pady=10)
+        
+        title_label = ctk.CTkLabel(control_frame, 
+                                   text="🔍 Unklare Legacy-Aufträge (ohne Kundennummer)",
+                                   font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.pack(side="left", padx=10)
+        
+        refresh_btn = ctk.CTkButton(control_frame, text="🔄 Aktualisieren",
+                                   command=self.load_unclear_legacy_entries,
+                                   width=150)
+        refresh_btn.pack(side="left", padx=10)
+        
+        self.legacy_status = ctk.CTkLabel(control_frame, text="")
+        self.legacy_status.pack(side="left", padx=10)
+        
+        # Info-Frame
+        info_frame = ctk.CTkFrame(tab)
+        info_frame.pack(fill="x", padx=10, pady=5)
+        
+        info_text = ("ℹ️ Diese Aufträge haben keine Kundennummer und konnten nicht automatisch zugeordnet werden.\n"
+                    "   Bitte wählen Sie manuell einen Kunden aus und klicken Sie auf 'Zuordnen'.")
+        info_label = ctk.CTkLabel(info_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=11), justify="left")
+        info_label.pack(padx=10, pady=10)
+        
+        # Liste für unklare Legacy-Aufträge
+        list_frame = ctk.CTkFrame(tab)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.legacy_scroll = ctk.CTkScrollableFrame(list_frame)
+        self.legacy_scroll.pack(fill="both", expand=True)
+        
+        # Header
+        header_frame = ctk.CTkFrame(self.legacy_scroll)
+        header_frame.pack(fill="x", pady=5)
+        
+        headers = ["Datei", "Auftrag", "Datum", "Name", "FIN", "Kennz.", "Jahr", "Typ", "Grund", "Kunde", "Aktion"]
+        widths = [120, 80, 90, 120, 140, 90, 50, 80, 100, 200, 150]
+        
+        for i, (header, width) in enumerate(zip(headers, widths)):
+            label = ctk.CTkLabel(header_frame, text=header, 
+                               font=ctk.CTkFont(weight="bold"), width=width)
+            label.grid(row=0, column=i, padx=2, pady=5, sticky="w")
+        
+        # Container für Legacy-Einträge
+        self.legacy_container = ctk.CTkFrame(self.legacy_scroll)
+        self.legacy_container.pack(fill="both", expand=True)
+        
+        # Initial laden
+        self.load_unclear_legacy_entries()
+    
     def browse_path(self, key: str):
         """Öffnet Dialog zur Pfadauswahl."""
         if key == "customers_file":
@@ -411,12 +470,19 @@ class MainWindow(ctk.CTk):
             filename = os.path.basename(file_path)
             
             try:
-                # Dokument analysieren mit gewählter Vorlage
+                # Legacy-Resolver initialisieren
+                from services.legacy_resolver import LegacyResolver
+                from services.vehicles import VehicleManager
+                vehicle_manager = VehicleManager()
+                legacy_resolver = LegacyResolver(self.customer_manager, vehicle_manager)
+                
+                # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
                     file_path, 
                     tesseract_path,
                     vorlage_name=self.vorlagen_manager.get_active_vorlage().name,
-                    vorlagen_manager=self.vorlagen_manager
+                    vorlagen_manager=self.vorlagen_manager,
+                    legacy_resolver=legacy_resolver
                 )
                 
                 # Dokument verarbeiten und verschieben
@@ -446,6 +512,10 @@ class MainWindow(ctk.CTk):
                 
                 # Zum Index hinzufügen
                 self.document_index.add_document(file_path, target_path, analysis, doc_status)
+                
+                # Bei unklaren Legacy-Aufträgen: auch zur unclear_legacy Tabelle hinzufügen
+                if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
+                    self.document_index.add_unclear_legacy(target_path, analysis)
                 
                 # Ergebnis in Tabelle anzeigen
                 self._add_result_row(filename, analysis, status, color)
@@ -710,6 +780,198 @@ class MainWindow(ctk.CTk):
                 subprocess.run(["xdg-open", os.path.dirname(file_path)])
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte Datei nicht öffnen:\n{e}")
+    
+    def load_unclear_legacy_entries(self):
+        """Lädt unklare Legacy-Einträge aus der Datenbank."""
+        # Alte Einträge löschen
+        for widget in self.legacy_container.winfo_children():
+            widget.destroy()
+        
+        # Einträge aus DB laden
+        entries = self.document_index.get_unclear_legacy_entries(status="offen")
+        
+        if not entries:
+            no_entries = ctk.CTkLabel(self.legacy_container, 
+                                     text="✓ Keine unklaren Legacy-Aufträge vorhanden",
+                                     font=ctk.CTkFont(size=14),
+                                     text_color="green")
+            no_entries.pack(pady=20)
+            self.legacy_status.configure(text="0 offene Einträge", text_color="green")
+            return
+        
+        # Einträge anzeigen
+        for entry in entries:
+            self._add_legacy_entry_row(entry)
+        
+        self.legacy_status.configure(text=f"{len(entries)} offene Einträge", text_color="orange")
+    
+    def _add_legacy_entry_row(self, entry: Dict[str, Any]):
+        """Fügt eine Zeile für einen Legacy-Eintrag hinzu."""
+        row_frame = ctk.CTkFrame(self.legacy_container)
+        row_frame.pack(fill="x", pady=2)
+        
+        # Daten vorbereiten
+        dateiname = entry.get("dateiname", "N/A")
+        if len(dateiname) > 15:
+            dateiname = dateiname[:12] + "..."
+        
+        kunden_name = entry.get("kunden_name", "N/A")
+        if len(kunden_name) > 15:
+            kunden_name = kunden_name[:12] + "..."
+        
+        fin = entry.get("fin", "N/A")
+        if fin and len(fin) > 17:
+            fin = fin[:14] + "..."
+        
+        kennzeichen = entry.get("kennzeichen", "N/A")
+        if kennzeichen and len(kennzeichen) > 12:
+            kennzeichen = kennzeichen[:9] + "..."
+        
+        values = [
+            dateiname,
+            entry.get("auftrag_nr", "N/A") or "N/A",
+            entry.get("auftragsdatum", "N/A") or "N/A",
+            kunden_name,
+            fin or "N/A",
+            kennzeichen or "N/A",
+            str(entry.get("jahr", "N/A")) if entry.get("jahr") else "N/A",
+            entry.get("dokument_typ", "N/A") or "N/A",
+            entry.get("match_reason", "unclear"),
+        ]
+        
+        widths = [120, 80, 90, 120, 140, 90, 50, 80, 100]
+        
+        for i, (value, width) in enumerate(zip(values, widths)):
+            label = ctk.CTkLabel(row_frame, text=value, width=width, anchor="w")
+            label.grid(row=0, column=i, padx=2, pady=2, sticky="w")
+        
+        # Kunden-Dropdown
+        kunden_liste = self._get_customer_dropdown_list()
+        kunden_dropdown = ctk.CTkComboBox(row_frame, width=200, values=kunden_liste)
+        kunden_dropdown.set("Kunde auswählen...")
+        kunden_dropdown.grid(row=0, column=len(values), padx=2, pady=2)
+        
+        # Zuordnen-Button
+        assign_btn = ctk.CTkButton(
+            row_frame, 
+            text="✓ Zuordnen", 
+            width=150,
+            command=lambda: self._assign_legacy_entry(entry["id"], kunden_dropdown, row_frame)
+        )
+        assign_btn.grid(row=0, column=len(values)+1, padx=2, pady=2)
+    
+    def _get_customer_dropdown_list(self) -> List[str]:
+        """Erstellt eine Liste von Kunden für das Dropdown."""
+        customers = []
+        for nr, kunde in self.customer_manager.customers.items():
+            # Format: "12345 - Mustermann, Max"
+            name = kunde.name if hasattr(kunde, 'name') else "Unbekannt"
+            customers.append(f"{nr} - {name}")
+        
+        return sorted(customers)
+    
+    def _assign_legacy_entry(self, entry_id: int, dropdown: ctk.CTkComboBox, row_frame: ctk.CTkFrame):
+        """Ordnet einen Legacy-Eintrag einem Kunden zu."""
+        selected = dropdown.get()
+        
+        if not selected or selected == "Kunde auswählen...":
+            messagebox.showwarning("Warnung", "Bitte wählen Sie einen Kunden aus.")
+            return
+        
+        # Kundennummer extrahieren (Format: "12345 - Name")
+        try:
+            kunden_nr = selected.split(" - ")[0].strip()
+        except:
+            messagebox.showerror("Fehler", "Ungültiges Kundenformat.")
+            return
+        
+        # Eintrag aus DB holen für Dateipfad
+        entries = self.document_index.get_unclear_legacy_entries(status="offen")
+        entry = next((e for e in entries if e["id"] == entry_id), None)
+        
+        if not entry:
+            messagebox.showerror("Fehler", "Eintrag nicht gefunden.")
+            return
+        
+        # Bestätigung
+        kunde = self.customer_manager.customers.get(kunden_nr)
+        kunde_name = kunde.name if kunde else "Unbekannt"
+        
+        if not messagebox.askyesno(
+            "Zuordnung bestätigen",
+            f"Auftrag '{entry.get('auftrag_nr', 'N/A')}' dem Kunden zuordnen?\n\n"
+            f"Kunde: {kunden_nr} - {kunde_name}\n"
+            f"FIN: {entry.get('fin', 'N/A')}\n"
+            f"Kennzeichen: {entry.get('kennzeichen', 'N/A')}"
+        ):
+            return
+        
+        try:
+            # In DB als zugeordnet markieren
+            success = self.document_index.assign_unclear_legacy(entry_id, kunden_nr)
+            
+            if not success:
+                messagebox.showerror("Fehler", "Zuordnung in Datenbank fehlgeschlagen.")
+                return
+            
+            # FIN in vehicles.csv speichern (falls vorhanden)
+            from services.vehicles import VehicleManager
+            if entry.get("fin"):
+                vehicle_manager = VehicleManager()
+                vehicle_manager.add_or_update_vehicle(
+                    fin=entry["fin"],
+                    kunden_nr=kunden_nr,
+                    kennzeichen=entry.get("kennzeichen")
+                )
+            
+            # Datei verschieben von Altbestand/Unklar zu Kunde/[Nr]-[Name]/[Jahr]/
+            datei_pfad = entry.get("datei_pfad")
+            if datei_pfad and os.path.exists(datei_pfad):
+                # Ziel-Pfad erstellen
+                jahr = entry.get("jahr", "Unbekannt")
+                kunde_ordner = f"{kunden_nr}-{kunde_name}".replace(" ", "_")
+                
+                root_dir = self.config.get("root_dir", "")
+                ziel_ordner = os.path.join(root_dir, "Kunde", kunde_ordner, str(jahr))
+                os.makedirs(ziel_ordner, exist_ok=True)
+                
+                # Dateinamen mit _Altauftrag markieren
+                dateiname = os.path.basename(datei_pfad)
+                if "_Altauftrag_Unklar" in dateiname:
+                    dateiname = dateiname.replace("_Altauftrag_Unklar", "_Altauftrag")
+                
+                ziel_pfad = os.path.join(ziel_ordner, dateiname)
+                
+                # Verschieben
+                import shutil
+                shutil.move(datei_pfad, ziel_pfad)
+                
+                # Zum normalen Dokumente-Index hinzufügen
+                metadata = {
+                    "kunden_nr": kunden_nr,
+                    "kunden_name": kunde_name,
+                    "auftrag_nr": entry.get("auftrag_nr"),
+                    "dokument_typ": entry.get("dokument_typ"),
+                    "jahr": entry.get("jahr"),
+                    "fin": entry.get("fin"),
+                    "kennzeichen": entry.get("kennzeichen"),
+                    "hinweis": f"Legacy-Auftrag manuell zugeordnet: {entry.get('match_reason')}",
+                    "confidence": 1.0
+                }
+                self.document_index.add_document(datei_pfad, ziel_pfad, metadata, "success")
+                
+                # Aus unclear_legacy löschen
+                self.document_index.delete_unclear_legacy(entry_id)
+            
+            # Zeile entfernen
+            row_frame.destroy()
+            
+            # Status aktualisieren
+            messagebox.showinfo("Erfolg", f"Auftrag erfolgreich Kunde {kunden_nr} zugeordnet!")
+            self.load_unclear_legacy_entries()
+            
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler bei der Zuordnung:\n{e}")
 
 
 def create_and_run_gui(config: Dict[str, Any], customer_manager: CustomerManager):
