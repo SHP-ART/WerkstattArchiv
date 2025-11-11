@@ -43,6 +43,19 @@ PATTERN_AUFTRAG_NR = r"(?:Werkstatt[-\s]*)?Auftrag(?:s)?[-\s]*(?:Nr|nummer)\.?[:
 # Datum: DD.MM.YYYY
 PATTERN_DATUM = r"(\d{1,2})\.(\d{1,2})\.(\d{4})"
 
+# Kennzeichen: z.B. "SFB-KI 23E", "B-MW 1234"
+# Format 1: Nach Label "Kennzeichen: SFB-KI 23E"
+# Format 2: Eigenständig in Zeile (1-3 Buchstaben, Bindestrich, 1-2 Buchstaben, Leerzeichen, Zahlen)
+PATTERN_KENNZEICHEN = r"(?:(?:Kennzeichen|Amtl\.?\s*Kennzeichen)[:\s]+)?([A-ZÄÖÜ]{1,3}[-\s][A-ZÄÖÜ]{1,2}\s+\d{1,4}\s*[A-Z]?)\b"
+
+# FIN (Fahrgestellnummer): 17-stellige alphanumerische Nummer
+# FINs verwenden keine Buchstaben I, O, Q (Verwechslungsgefahr mit 1, 0)
+PATTERN_FIN = r"\b([A-HJ-NPR-Z0-9]{17})\b"
+
+# Kundenname: Vor- und Nachname (Großbuchstaben am Anfang)
+# Format: "Name: Max Mustermann" oder eigenständig "Max Mustermann"
+PATTERN_KUNDENNAME = r"(?:Name[:\s]+)?([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)"
+
 # Dokumenttyp-Keywords
 DOCTYPE_KEYWORDS = {
     "Rechnung": ["Rechnung"],
@@ -176,6 +189,57 @@ def extract_auftrag_nr(text: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def extract_kennzeichen(text: str) -> Optional[str]:
+    """Extrahiert das Kfz-Kennzeichen aus dem Text."""
+    match = re.search(PATTERN_KENNZEICHEN, text, re.IGNORECASE)
+    if match:
+        # Normalisiere: Entferne überflüssige Leerzeichen
+        kennzeichen = match.group(1).strip()
+        kennzeichen = re.sub(r'\s+', ' ', kennzeichen)
+        # Validierung: Muss Bindestrich enthalten und Zahlen am Ende haben
+        if '-' in kennzeichen and re.search(r'\d', kennzeichen):
+            return kennzeichen
+    return None
+
+
+def extract_fin(text: str) -> Optional[str]:
+    """Extrahiert die FIN (Fahrgestellnummer) aus dem Text."""
+    # Suche alle 17-Zeichen-Kombinationen
+    matches = re.finditer(PATTERN_FIN, text, re.IGNORECASE)
+    for match in matches:
+        fin = match.group(1).upper().strip()
+        # Validierung: FIN muss genau 17 Zeichen haben UND Ziffern enthalten
+        # (verhindert false positives wie "VERTRAGSWERKSTATT")
+        if len(fin) == 17 and re.search(r'\d', fin):
+            return fin
+    return None
+
+
+def extract_kundenname(text: str) -> Optional[str]:
+    """Extrahiert den Kundennamen aus dem Text."""
+    # Versuche zuerst mit "Name:" Label
+    match = re.search(r"Name[:\s]+([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)", text, re.IGNORECASE)
+    if match:
+        name = match.group(1).strip()
+        # Filter: Ignoriere häufige False Positives
+        if name.lower() not in ['straße nr', 'telefon mobil', 'werkstatt auftrag']:
+            return name
+    
+    # Fallback: Suche nach typischen Vor-/Nachnamen-Mustern
+    # (z.B. "Anne Schultze" nach Adressfeldern)
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        line = line.strip()
+        # Suche nach Zeile mit nur Vor- und Nachname (2-4 Wörter)
+        if re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(\s+[A-ZÄÖÜ][a-zäöüß]+){1,3}$', line):
+            words = line.split()
+            # Mindestens 2 Wörter (Vor- und Nachname)
+            if len(words) >= 2:
+                return line
+    
+    return None
+
+
 def extract_datum(text: str) -> Optional[int]:
     """Extrahiert das erste Datum und gibt das Jahr zurück."""
     match = re.search(PATTERN_DATUM, text)
@@ -261,7 +325,7 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
             "vorlage_verwendet": str | None
         }
     """
-    # Text extrahieren
+        # Text extrahieren
     text = extract_text(file_path, tesseract_path)
     
     # Metadaten extrahieren mit Vorlage (wenn vorhanden)
@@ -280,6 +344,11 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
         dokument_typ = extract_dokument_typ(text)
         vorlage_verwendet = "Standard (Legacy)"
     
+    # Zusätzliche Felder extrahieren (unabhängig von Vorlage)
+    kunden_name = extract_kundenname(text)
+    kennzeichen = extract_kennzeichen(text)
+    fin = extract_fin(text)
+    
     # Confidence berechnen
     confidence = calculate_confidence(kunden_nr, auftrag_nr, dokument_typ, jahr)
     
@@ -292,10 +361,12 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
     
     result = {
         "kunden_nr": kunden_nr,
-        "kunden_name": None,  # Wird später vom Router gesetzt
+        "kunden_name": kunden_name,
         "auftrag_nr": auftrag_nr,
         "dokument_typ": dokument_typ,
         "jahr": jahr,
+        "kennzeichen": kennzeichen,
+        "fin": fin,
         "confidence": confidence,
         "hinweis": hinweis,
         "vorlage_verwendet": vorlage_verwendet,
