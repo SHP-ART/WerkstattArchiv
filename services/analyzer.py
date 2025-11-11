@@ -34,8 +34,13 @@ except ImportError:
 
 
 # Regex-Patterns für die Extraktion
-PATTERN_KUNDEN_NR = r"Kunde[-\s]*Nr[:\s]+(\d+)"
-PATTERN_AUFTRAG_NR = r"Auftrag[-\s]*Nr[:\s]+(\d+)"
+# Kundennummer: unterstützt "Kunde Nr", "Kd.Nr.", "Kd.-Nr.", "Kundennummer" etc.
+PATTERN_KUNDEN_NR = r"(?:Kunde(?:n)?[-\s]*(?:Nr|nummer)|Kd\.?[-\s]*Nr\.?)[:\s]+(\d+)"
+
+# Auftragsnummer: unterstützt "Auftrag Nr", "Werkstatt-Auftrag Nr", "Auftragsnummer" etc.
+PATTERN_AUFTRAG_NR = r"(?:Werkstatt[-\s]*)?Auftrag(?:s)?[-\s]*(?:Nr|nummer)\.?[:\s]+(\d+)"
+
+# Datum: DD.MM.YYYY
 PATTERN_DATUM = r"(\d{1,2})\.(\d{1,2})\.(\d{4})"
 
 # Dokumenttyp-Keywords

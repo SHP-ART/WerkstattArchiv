@@ -41,9 +41,16 @@ class StandardVorlage(AuftragsVorlage):
             beschreibung="Kunde-Nr, Auftrag-Nr, normales Format"
         )
         
-        # Regex-Patterns
-        self.pattern_kunden_nr = r"Kunde[-\s]*Nr[:\s]+(\d+)"
-        self.pattern_auftrag_nr = r"Auftrag[-\s]*Nr[:\s]+(\d+)"
+        # Regex-Patterns (verbessert für mehr Varianten)
+        # Kundennummer: "Kunde Nr", "Kd.Nr.", "Kd.-Nr.", "Kundennummer" etc.
+        self.pattern_kunden_nr = r"(?:Kunde(?:n)?[-\s]*(?:Nr|nummer)|Kd\.?[-\s]*Nr\.?)[:\s]+(\d+)"
+        
+        # Auftragsnummer: Mehrere Varianten
+        # 1. "Werkstatt-Auftrag Nr: 11" oder "Auftrag Nr: 123" (neues System)
+        # 2. Eigenständige 5-stellige Nummer (altes Formular: 78708 auf eigener Zeile)
+        self.pattern_auftrag_nr = r"(?:(?:Werkstatt[-\s]*)?Auftrag(?:s)?[-\s]*(?:Nr|nummer)\.?[:\s]+(\d+)|^\s*(\d{5})\s*$)"
+        
+        # Datum: DD.MM.YYYY
         self.pattern_datum = r"(\d{1,2})\.(\d{1,2})\.(\d{4})"
         
         # Dokumenttyp-Keywords
@@ -60,8 +67,21 @@ class StandardVorlage(AuftragsVorlage):
         return match.group(1) if match else None
     
     def extract_auftrag_nr(self, text: str) -> Optional[str]:
-        match = re.search(self.pattern_auftrag_nr, text, re.IGNORECASE)
-        return match.group(1) if match else None
+        # Versuch 1: Neues System - "Werkstatt-Auftrag Nr: 11"
+        match = re.search(self.pattern_auftrag_nr, text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            result = match.group(1) if match.group(1) else match.group(2)
+            if result:
+                return result
+        
+        # Versuch 2: Altes Formular - suche "Auftragsnummer:" und die erste 5-stellige Zahl danach
+        if "Auftragsnummer:" in text:
+            # Finde alle 5-stelligen Zahlen im Text
+            numbers = re.findall(r'\b(\d{5})\b', text)
+            if numbers:
+                return numbers[0]  # Erste 5-stellige Zahl ist die Auftragsnummer
+        
+        return None
     
     def extract_datum(self, text: str) -> Optional[int]:
         match = re.search(self.pattern_datum, text)
