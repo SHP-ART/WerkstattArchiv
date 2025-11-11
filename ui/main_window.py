@@ -94,6 +94,7 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Unklare Dokumente")
         self.tabview.add("Unklare Legacy-Aufträge")
         self.tabview.add("Regex-Patterns")
+        self.tabview.add("System")
         
         # Nur die wichtigsten Tabs sofort erstellen (Einstellungen + Verarbeitung)
         self.create_settings_tab()
@@ -119,6 +120,9 @@ class MainWindow(ctk.CTk):
             elif current_tab == "Regex-Patterns":
                 self.create_patterns_tab()
                 self.tabs_created["Regex-Patterns"] = True
+            elif current_tab == "System":
+                self.create_system_tab()
+                self.tabs_created["System"] = True
         
         # Daten laden wenn Tab bereits erstellt aber Daten noch nicht geladen
         if current_tab == "Suche" and not self.tabs_data_loaded["Suche"]:
@@ -196,25 +200,34 @@ class MainWindow(ctk.CTk):
         # Status-Label
         self.settings_status = ctk.CTkLabel(settings_frame, text="")
         self.settings_status.pack(pady=5)
+    
+    def create_system_tab(self):
+        """Erstellt den System-Tab für Backup und Updates."""
+        tab = self.tabview.tab("System")
         
-        # Separator
-        separator = ctk.CTkFrame(settings_frame, height=2, fg_color="gray")
-        separator.pack(fill="x", padx=20, pady=20)
+        # Frame für System
+        system_frame = ctk.CTkFrame(tab)
+        system_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Überschrift
+        title = ctk.CTkLabel(system_frame, text="System & Wartung", 
+                            font=ctk.CTkFont(size=20, weight="bold"))
+        title.pack(pady=10)
         
         # Backup-Bereich
-        backup_title = ctk.CTkLabel(settings_frame, text="💾 Backup & Wiederherstellung", 
+        backup_title = ctk.CTkLabel(system_frame, text="💾 Backup & Wiederherstellung", 
                                     font=ctk.CTkFont(size=18, weight="bold"))
         backup_title.pack(pady=10)
         
         backup_info = ctk.CTkLabel(
-            settings_frame, 
+            system_frame, 
             text="Sichere alle wichtigen Daten: Konfiguration, Kundendatenbank, Index-Datenbank, Fahrzeug-Index",
             font=ctk.CTkFont(size=11),
             text_color="gray"
         )
         backup_info.pack(pady=5)
         
-        backup_buttons_frame = ctk.CTkFrame(settings_frame)
+        backup_buttons_frame = ctk.CTkFrame(system_frame)
         backup_buttons_frame.pack(pady=10)
         
         create_backup_btn = ctk.CTkButton(
@@ -244,8 +257,41 @@ class MainWindow(ctk.CTk):
         manage_backups_btn.pack(side="left", padx=5)
         
         # Backup-Status
-        self.backup_status = ctk.CTkLabel(settings_frame, text="")
+        self.backup_status = ctk.CTkLabel(system_frame, text="")
         self.backup_status.pack(pady=5)
+        
+        # Separator
+        separator = ctk.CTkFrame(system_frame, height=2, fg_color="gray")
+        separator.pack(fill="x", padx=20, pady=20)
+        
+        # Update-Bereich
+        update_title = ctk.CTkLabel(system_frame, text="🔄 Software-Updates", 
+                                    font=ctk.CTkFont(size=18, weight="bold"))
+        update_title.pack(pady=10)
+        
+        update_info = ctk.CTkLabel(
+            system_frame, 
+            text=f"Aktuelle Version: {self.version} | Prüfe auf neue Versionen von GitHub",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        update_info.pack(pady=5)
+        
+        update_buttons_frame = ctk.CTkFrame(system_frame)
+        update_buttons_frame.pack(pady=10)
+        
+        check_update_btn = ctk.CTkButton(
+            update_buttons_frame, 
+            text="🔍 Auf Updates prüfen",
+            command=self.check_for_updates,
+            width=200,
+            fg_color="blue"
+        )
+        check_update_btn.pack(side="left", padx=5)
+        
+        # Update-Status
+        self.update_status = ctk.CTkLabel(system_frame, text="")
+        self.update_status.pack(pady=5)
     
     def create_processing_tab(self):
         """Erstellt den Verarbeitungs-Tab."""
@@ -1680,10 +1726,130 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Fehler", message)
     
+    def check_for_updates(self):
+        """Prüft auf neue Versions-Updates von GitHub."""
+        from services.updater import UpdateManager
+        
+        self.update_status.configure(text="🔄 Prüfe auf Updates...", text_color="blue")
+        self.update()
+        
+        # In Thread ausführen um GUI nicht zu blockieren
+        def check_thread():
+            updater = UpdateManager(self.version)
+            update_available, latest_version, download_url = updater.check_for_updates()
+            
+            # Ergebnis im Haupt-Thread anzeigen
+            self.after(0, lambda: self._handle_update_check(
+                update_available, latest_version, download_url, updater
+            ))
+        
+        thread = threading.Thread(target=check_thread, daemon=True)
+        thread.start()
+    
+    def _handle_update_check(self, update_available: bool, latest_version: Optional[str], 
+                            download_url: Optional[str], updater):
+        """Verarbeitet das Ergebnis der Update-Prüfung."""
+        if update_available and latest_version and download_url:
+            self.update_status.configure(
+                text=f"✨ Update verfügbar: v{latest_version}", 
+                text_color="green"
+            )
+            
+            # Release Notes holen
+            release_notes = updater.get_release_notes()
+            
+            # Update-Dialog anzeigen
+            message = (
+                f"🎉 Neue Version verfügbar!\n\n"
+                f"Installiert: v{self.version}\n"
+                f"Verfügbar: v{latest_version}\n\n"
+                f"Was ist neu:\n"
+                f"{release_notes[:500] if release_notes else 'Siehe GitHub für Details'}\n\n"
+                f"Möchten Sie jetzt aktualisieren?\n\n"
+                f"⚠️ Die Anwendung wird neu gestartet."
+            )
+            
+            if messagebox.askyesno("Update verfügbar", message):
+                self._install_update(download_url, updater)
+        else:
+            self.update_status.configure(
+                text=f"✓ Aktuell (v{self.version})", 
+                text_color="green"
+            )
+            messagebox.showinfo(
+                "Keine Updates", 
+                f"Sie verwenden bereits die neueste Version (v{self.version})."
+            )
+    
+    def _install_update(self, download_url: str, updater):
+        """Installiert ein Update."""
+        # Progress-Dialog erstellen
+        progress_window = ctk.CTkToplevel(self)
+        progress_window.title("Update wird installiert...")
+        progress_window.geometry("500x200")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        # Progress-Label
+        progress_label = ctk.CTkLabel(
+            progress_window,
+            text="Bereite Update vor...",
+            font=ctk.CTkFont(size=14)
+        )
+        progress_label.pack(pady=20)
+        
+        # Progress-Bar
+        progress_bar = ctk.CTkProgressBar(progress_window, width=400)
+        progress_bar.pack(pady=20)
+        progress_bar.set(0)
+        
+        # Status-Label
+        status_label = ctk.CTkLabel(
+            progress_window,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        status_label.pack(pady=10)
+        
+        def progress_callback(percent, message):
+            """Callback für Update-Fortschritt."""
+            self.after(0, lambda: progress_bar.set(percent / 100))
+            self.after(0, lambda: status_label.configure(text=message))
+        
+        def install_thread():
+            """Installiert Update in separatem Thread."""
+            success, message = updater.download_and_install_update(
+                download_url, 
+                progress_callback
+            )
+            
+            # Ergebnis anzeigen
+            self.after(0, lambda: self._handle_update_result(
+                success, message, progress_window, updater
+            ))
+        
+        # Update in Thread starten
+        thread = threading.Thread(target=install_thread, daemon=True)
+        thread.start()
+    
+    def _handle_update_result(self, success: bool, message: str, 
+                             progress_window, updater):
+        """Verarbeitet das Ergebnis der Update-Installation."""
+        progress_window.destroy()
+        
+        if success:
+            if messagebox.askyesno("Update erfolgreich", message):
+                # Anwendung neu starten
+                updater.restart_application()
+        else:
+            self.update_status.configure(text="✗ Update fehlgeschlagen", text_color="red")
+            messagebox.showerror("Update fehlgeschlagen", message)
+    
     def on_closing(self):
         """Wird beim Schließen des Fensters aufgerufen."""
         # Watchdog stoppen falls aktiv
-        if self.watchdog_service and self.watchdog_service.is_watching:
+        if hasattr(self, 'watchdog_service') and self.watchdog_service and self.watchdog_service.is_watching:
             print("Stoppe Watchdog...")
             self.watchdog_service.stop()
         

@@ -17,6 +17,7 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 - ✅ **Konfigurierbare Regex-Patterns** - Anpassbare Suchmuster über GUI (neu!)
 - ✅ **Automatische Kundenverwaltung** - Kunden werden automatisch aus Dokumenten hinzugefügt (neu!)
 - ✅ **Backup & Restore** - Sichere alle Daten mit einem Klick (neu!)
+- ✅ **Auto-Update-System** - Updates direkt aus GitHub installieren (neu!)
 - ✅ Manuelle Nachbearbeitung unklarer Dokumente
 - ✅ Vollständig lokal (keine Cloud-Services)
 - ✅ Ausführliches Logging aller Vorgänge
@@ -564,11 +565,10 @@ Das WerkstattArchiv bietet ein **integriertes Backup-System** zum Sichern und Wi
 ### Backup erstellen
 
 **In der GUI:**
-1. Gehe zu **"Einstellungen"** Tab
-2. Scrolle nach unten zum Bereich **"💾 Backup & Wiederherstellung"**
-3. Klicke auf **"📦 Backup erstellen"**
-4. Gib optional einen Namen ein (z.B. "vor_update" oder "2025-11")
-5. ✓ Backup wird erstellt als ZIP-Datei in `backups/`
+1. Gehe zum **"System"** Tab
+2. Klicke auf **"📦 Backup erstellen"**
+3. Gib optional einen Namen ein (z.B. "vor_update" oder "2025-11")
+4. ✓ Backup wird erstellt als ZIP-Datei in `backups/`
 
 **Was passiert:**
 - Alle Dateien werden in ein ZIP-Archiv gepackt
@@ -580,7 +580,7 @@ Das WerkstattArchiv bietet ein **integriertes Backup-System** zum Sichern und Wi
 **⚠️ WARNUNG:** Alle aktuellen Daten werden überschrieben!
 
 **In der GUI:**
-1. Gehe zu **"Einstellungen"** Tab
+1. Gehe zum **"System"** Tab
 2. Klicke auf **"♻️ Backup wiederherstellen"**
 3. Wähle eine Backup-ZIP-Datei aus
 4. Bestätige die Sicherheitsabfrage
@@ -590,7 +590,7 @@ Das WerkstattArchiv bietet ein **integriertes Backup-System** zum Sichern und Wi
 ### Backups verwalten
 
 **In der GUI:**
-1. Gehe zu **"Einstellungen"** Tab
+1. Gehe zum **"System"** Tab
 2. Klicke auf **"📋 Backups verwalten"**
 3. Übersicht aller Backups:
    - Backup-Name
@@ -683,6 +683,83 @@ D:\Scan\Daten\Altbestand\Unklar\2019\78709_Altauftrag_Unklar_20190412_N/A_Muelle
 ```
 
 **Hinweis:** Nach manueller Zuordnung im GUI-Tab werden unklare Legacy-Aufträge automatisch in die richtige Kundenstruktur verschoben.
+
+---
+
+## 🔄 Auto-Update-System
+
+Das WerkstattArchiv kann sich **automatisch über GitHub aktualisieren** - direkt aus der GUI heraus!
+
+### Wie funktioniert das Update?
+
+#### 1. **Update-Check starten**
+
+Gehe zum neuen Tab **"System"** (letzter Tab).
+
+Dort findest du die Bereiche für Backup und Updates.
+
+Klicke auf den Button:
+
+```
+🔍 Auf Updates prüfen
+```
+
+Das System prüft nun die neueste Version auf GitHub.
+
+#### 2. **Update-Dialog**
+
+Falls ein Update verfügbar ist, erscheint ein Dialog mit:
+- 📦 **Neue Version**: z.B. "v0.9.0"
+- 📝 **Release Notes**: Was ist neu?
+- ✅ **Bestätigung**: Update jetzt installieren?
+
+#### 3. **Automatische Installation**
+
+Nach Bestätigung:
+1. **Backup erstellen** → `backup_before_update/` (Sicherheitskopie)
+2. **Download** → Neueste Version von GitHub
+3. **Installation** → Dateien werden aktualisiert
+4. **Restart** → Anwendung startet automatisch neu
+
+### Technische Details
+
+**Quelle:** GitHub Releases  
+**API:** `https://api.github.com/repos/SHP-ART/WerkstattArchiv/releases/latest`  
+**Download-Format:** ZIP-Archiv (zipball_url)  
+**Backup-Ordner:** `backup_before_update/` (vor jeder Installation)
+
+**Update-Komponenten:**
+- Python-Dateien (`.py`)
+- Services-Module (`services/`)
+- GUI-Module (`ui/`)
+- Konfigurationsdateien bleiben erhalten!
+
+**Sicherheitsmechanismen:**
+✅ Automatisches Backup vor Update  
+✅ Version-Vergleich (Semantic Versioning)  
+✅ Fortschrittsanzeige während Download  
+✅ Thread-sichere Implementierung  
+✅ Benutzer-Bestätigung erforderlich  
+
+### Wichtige Hinweise
+
+⚠️ **Internet-Verbindung erforderlich** zum Prüfen und Herunterladen  
+⚠️ **Schreibrechte** im Installationsverzeichnis benötigt  
+⚠️ **Backup automatisch** - alte Version wird gesichert  
+✅ **Keine Cloud-Services** - nur GitHub (Open Source)  
+
+### Manuelles Update (falls nötig)
+
+Falls das Auto-Update nicht funktioniert, kannst du manuell aktualisieren:
+
+```bash
+cd /Users/shp-art/Documents/Github/WerkstattArchiv
+git pull origin main
+pip install -r requirements.txt
+python3 main.py
+```
+
+---
 
 ## Dokumenttyp-Erkennung
 
