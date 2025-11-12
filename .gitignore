@@ -29,6 +29,10 @@ build/
 *.db
 *.db-journal
 
+# Sensible Daten (nicht auf GitHub)
+data/vehicles.csv
+data/customers.csv
+
 # Config (kann private Pfade enthalten)
 # config.json
 
