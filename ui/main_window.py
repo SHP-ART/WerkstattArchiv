@@ -74,7 +74,8 @@ class MainWindow(ctk.CTk):
             "Unklare Legacy-Aufträge": False,
             "Virtuelle Kunden": False,
             "Regex-Patterns": False,
-            "System": False
+            "System": False,
+            "Logs": False
         }
 
         # Daten-Lade-Flags (für Refresh)
@@ -86,6 +87,17 @@ class MainWindow(ctk.CTk):
         # Cache für Dropdown-Liste
         self._customer_dropdown_cache = None
         self._customer_dropdown_cache_time = 0
+        
+        # Log-Buffer für Log-Tab
+        self.log_buffer = []
+        self.max_log_entries = 1000  # Maximal 1000 Log-Einträge im Speicher
+        
+        # Log-Datei initialisieren
+        self.log_file_path = os.path.join(os.path.dirname(__file__), "..", "logs", "werkstatt.log")
+        os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
+        
+        # Lade existierende Logs beim Start
+        self._load_existing_logs()
         
         # Version importieren
         try:
@@ -171,6 +183,7 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Virtuelle Kunden")
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
+        self.tabview.add("Logs")
         
         # Erstelle ALLE Tabs und lade ALLE Daten synchron
         self.update_loading_progress(0.1, "⚙️  Lade Einstellungen...", "Konfiguration und Pfade")
@@ -233,13 +246,17 @@ class MainWindow(ctk.CTk):
         self.create_virtual_customers_tab()
         self.tabs_created["Virtuelle Kunden"] = True
         
-        self.update_loading_progress(0.85, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
+        self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
         self.create_patterns_tab()
         self.tabs_created["Regex-Patterns"] = True
         
-        self.update_loading_progress(0.95, "🔧 Erstelle System...", "System-Tools")
+        self.update_loading_progress(0.85, "🔧 Erstelle System...", "System-Tools")
         self.create_system_tab()
         self.tabs_created["System"] = True
+        
+        self.update_loading_progress(0.9, "📋 Erstelle Logs...", "Debug-Log-Anzeige")
+        self.create_logs_tab()
+        self.tabs_created["Logs"] = True
         
         # Alles vollständig geladen
         self.update_loading_progress(1.0, "✅ Vollständig geladen!", "Alle Tabs und Daten sind bereit")
@@ -611,6 +628,70 @@ class MainWindow(ctk.CTk):
 
         # Initial Statistiken laden
         self.update_db_stats()
+
+    def create_logs_tab(self):
+        """Erstellt den Logs-Tab für Debug-Ausgaben."""
+        tab = self.tabview.tab("Logs")
+        
+        # Header
+        header_frame = ctk.CTkFrame(tab)
+        header_frame.pack(fill="x", padx=10, pady=10)
+        
+        title_label = ctk.CTkLabel(header_frame, 
+                                   text="📋 System-Logs",
+                                   font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.pack(side="left", padx=10)
+        
+        # Control-Buttons
+        button_frame = ctk.CTkFrame(header_frame)
+        button_frame.pack(side="right", padx=10)
+        
+        clear_btn = ctk.CTkButton(button_frame, text="🗑️ Logs löschen",
+                                 command=self.clear_logs,
+                                 width=120)
+        clear_btn.pack(side="left", padx=5)
+        
+        export_btn = ctk.CTkButton(button_frame, text="💾 Exportieren",
+                                  command=self.export_logs,
+                                  width=120)
+        export_btn.pack(side="left", padx=5)
+        
+        refresh_btn = ctk.CTkButton(button_frame, text="🔄 Aktualisieren",
+                                   command=self.refresh_logs,
+                                   width=120)
+        refresh_btn.pack(side="left", padx=5)
+        
+        # Auto-Scroll Checkbox
+        self.auto_scroll_var = ctk.BooleanVar(value=True)
+        auto_scroll_cb = ctk.CTkCheckBox(button_frame, text="Auto-Scroll",
+                                        variable=self.auto_scroll_var)
+        auto_scroll_cb.pack(side="left", padx=5)
+        
+        # Info
+        info_frame = ctk.CTkFrame(tab)
+        info_frame.pack(fill="x", padx=10, pady=5)
+        
+        info_text = ("ℹ️ Zeigt alle wichtigen System-Events: Dokumenten-Verarbeitung, Fehler, Updates, etc.\n"
+                    "   Die neuesten Einträge erscheinen unten. Maximal 1000 Einträge im Speicher.")
+        info_label = ctk.CTkLabel(info_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=11), justify="left")
+        info_label.pack(padx=10, pady=10)
+        
+        # Log-Anzeige (Textbox)
+        log_frame = ctk.CTkFrame(tab)
+        log_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.log_textbox = ctk.CTkTextbox(log_frame, 
+                                          font=ctk.CTkFont(family="Courier", size=11),
+                                          wrap="word")
+        self.log_textbox.pack(fill="both", expand=True)
+        
+        # Status
+        self.log_status = ctk.CTkLabel(tab, text="")
+        self.log_status.pack(pady=5)
+        
+        # Initial-Nachricht
+        self.add_log("INFO", "Log-System gestartet")
 
     def create_processing_tab(self):
         """Erstellt den Verarbeitungs-Tab."""
@@ -1219,12 +1300,14 @@ class MainWindow(ctk.CTk):
         input_dir = self.config.get("input_dir")
 
         if not input_dir or not os.path.exists(input_dir):
+            self.add_log("ERROR", "Eingangsordner nicht gefunden", input_dir or "Nicht konfiguriert")
             messagebox.showerror("Fehler",
                                "Eingangsordner nicht gefunden. Bitte Einstellungen prüfen.")
             return
 
         # Setze Scanning-Flag
         self.is_scanning = True
+        self.add_log("INFO", f"Starte Scan von Eingangsordner", input_dir)
 
         # Button sofort deaktivieren - mit doppeltem Update für sofortige Reaktion
         self.scan_btn.configure(state="disabled", text="⏳ Scanne...")
@@ -1265,6 +1348,7 @@ class MainWindow(ctk.CTk):
             self.after(0, self._display_scanned_files, files)
             
         except Exception as e:
+            self.add_log("ERROR", f"Fehler beim Scannen", str(e))
             self.after(0, lambda: self.process_status.configure(
                 text=f"❌ Fehler: {str(e)}", text_color="red"
             ))
@@ -1276,6 +1360,8 @@ class MainWindow(ctk.CTk):
     
     def _display_scanned_files(self, files):
         """Zeigt gescannte Dateien in der GUI an."""
+        
+        self.add_log("SUCCESS", f"Scan abgeschlossen: {len(files)} Dateien gefunden")
 
         # Alte Ergebnisse löschen
         for widget in self.results_container.winfo_children():
@@ -3016,8 +3102,158 @@ class MainWindow(ctk.CTk):
             print("Stoppe Watchdog...")
             self.watchdog_service.stop()
 
+        # Log-Eintrag
+        if hasattr(self, 'log_buffer'):
+            self.add_log("INFO", "Anwendung wird beendet")
+
         # Fenster schließen
         self.destroy()
+    
+    def add_log(self, level: str, message: str, detail: str = ""):
+        """
+        Fügt einen Log-Eintrag hinzu (Buffer + Datei).
+        
+        Args:
+            level: Log-Level (INFO, WARNING, ERROR, SUCCESS, DEBUG)
+            message: Haupt-Nachricht
+            detail: Optionale Detail-Informationen
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Level-Emoji
+        level_emojis = {
+            "INFO": "ℹ️",
+            "WARNING": "⚠️",
+            "ERROR": "❌",
+            "SUCCESS": "✅",
+            "DEBUG": "🔍"
+        }
+        emoji = level_emojis.get(level, "📝")
+        
+        # Formatiere Log-Eintrag für Anzeige (nur Zeit)
+        display_time = datetime.now().strftime("%H:%M:%S")
+        log_entry_display = f"[{display_time}] {emoji} {level:8s} | {message}"
+        if detail:
+            log_entry_display += f"\n{'':23s}└─ {detail}"
+        
+        # Formatiere Log-Eintrag für Datei (vollständiger Timestamp)
+        log_entry_file = f"[{timestamp}] {level:8s} | {message}"
+        if detail:
+            log_entry_file += f" | Detail: {detail}"
+        
+        # Zum Buffer hinzufügen (für GUI-Anzeige)
+        self.log_buffer.append(log_entry_display)
+        
+        # Limit einhalten
+        if len(self.log_buffer) > self.max_log_entries:
+            self.log_buffer.pop(0)
+        
+        # In Datei schreiben
+        try:
+            with open(self.log_file_path, 'a', encoding='utf-8') as f:
+                f.write(log_entry_file + "\n")
+        except Exception as e:
+            print(f"Fehler beim Schreiben in Log-Datei: {e}")
+        
+        # In GUI anzeigen (wenn Tab existiert)
+        if hasattr(self, 'log_textbox'):
+            self.log_textbox.insert("end", log_entry_display + "\n")
+            
+            # Auto-Scroll
+            if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
+                self.log_textbox.see("end")
+        
+        # Auch in Konsole ausgeben für kritische Fehler
+        if level == "ERROR":
+            print(f"ERROR: {message}")
+            if detail:
+                print(f"  Detail: {detail}")
+    
+    def _load_existing_logs(self):
+        """Lädt existierende Logs aus der Datei beim Programmstart."""
+        try:
+            if os.path.exists(self.log_file_path):
+                # Lese nur die letzten N Zeilen (Performance)
+                with open(self.log_file_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                # Konvertiere Datei-Format zurück zu Display-Format
+                for line in lines[-self.max_log_entries:]:  # Nur letzte 1000
+                    line = line.strip()
+                    if line and line.startswith('['):
+                        # Extrahiere Daten aus Datei-Format: [YYYY-MM-DD HH:MM:SS] LEVEL | Message
+                        try:
+                            parts = line.split('|', 2)
+                            if len(parts) >= 2:
+                                timestamp_level = parts[0].strip()
+                                message_part = '|'.join(parts[1:]).strip()
+                                
+                                # Extrahiere Zeit (HH:MM:SS)
+                                time_match = timestamp_level.split(']')[0].split()[-1]
+                                level = timestamp_level.split(']')[1].strip()
+                                
+                                # Erstelle Display-Format
+                                level_emojis = {
+                                    "INFO": "ℹ️",
+                                    "WARNING": "⚠️",
+                                    "ERROR": "❌",
+                                    "SUCCESS": "✅",
+                                    "DEBUG": "🔍"
+                                }
+                                emoji = level_emojis.get(level, "📝")
+                                display_entry = f"[{time_match}] {emoji} {level:8s} | {message_part}"
+                                self.log_buffer.append(display_entry)
+                        except:
+                            pass  # Überspringe fehlerhafte Zeilen
+                            
+        except Exception as e:
+            print(f"Fehler beim Laden der Log-Datei: {e}")
+    
+    def clear_logs(self):
+        """Löscht alle Logs."""
+        if messagebox.askyesno("Logs löschen", "Alle Logs löschen?"):
+            self.log_buffer.clear()
+            self.log_textbox.delete("1.0", "end")
+            self.add_log("INFO", "Logs gelöscht")
+            self.log_status.configure(text="✓ Logs gelöscht", text_color="green")
+    
+    def export_logs(self):
+        """Exportiert Logs in eine Datei."""
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            initialfile=f"werkstatt_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            filetypes=[("Text-Dateien", "*.txt"), ("Alle Dateien", "*.*")]
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(f"WerkstattArchiv Log-Export\n")
+                    f.write(f"Datum: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
+                    f.write(f"Version: {self.version}\n")
+                    f.write("=" * 80 + "\n\n")
+                    
+                    for entry in self.log_buffer:
+                        f.write(entry + "\n")
+                
+                self.add_log("SUCCESS", f"Logs exportiert: {os.path.basename(filename)}")
+                self.log_status.configure(text=f"✓ Exportiert: {os.path.basename(filename)}", 
+                                         text_color="green")
+            except Exception as e:
+                self.add_log("ERROR", f"Fehler beim Exportieren: {str(e)}")
+                messagebox.showerror("Fehler", f"Fehler beim Exportieren:\n{str(e)}")
+    
+    def refresh_logs(self):
+        """Aktualisiert die Log-Anzeige."""
+        self.log_textbox.delete("1.0", "end")
+        for entry in self.log_buffer:
+            self.log_textbox.insert("end", entry + "\n")
+        
+        if self.auto_scroll_var.get():
+            self.log_textbox.see("end")
+        
+        self.log_status.configure(text=f"✓ {len(self.log_buffer)} Log-Einträge", 
+                                 text_color="green")
 
 
 def create_and_run_gui(config: Dict[str, Any], customer_manager: CustomerManager):

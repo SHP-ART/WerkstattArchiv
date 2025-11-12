@@ -19,6 +19,7 @@ build/
 
 # Logfiles
 *.log
+!logs/werkstatt.log
 *.txt
 !requirements.txt
 !README.md
