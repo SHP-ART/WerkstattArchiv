@@ -64,7 +64,10 @@ WerkstattArchiv/
 **Schnellinstallation für Windows:**
 1. Rechtsklick auf `install.bat` → "Als Administrator ausführen"
 2. Warte bis Installation abgeschlossen
-3. Doppelklick auf `start.bat` oder Desktop-Verknüpfung
+3. **Programmstart (wähle eine Variante):**
+   - `start.bat` - Standard (Konsole verschwindet automatisch)
+   - `start_debug.bat` - Mit Konsole (für Debugging)
+   - `start_silent.vbs` - Komplett unsichtbar (kein Fenster)
 
 📖 **Detaillierte Anleitung:** Siehe [WINDOWS_INSTALLATION.md](WINDOWS_INSTALLATION.md)
 

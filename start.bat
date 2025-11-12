@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM WerkstattArchiv Starter
+REM WerkstattArchiv Starter (ohne Konsolenfenster)
 REM ============================================================
 
 cd /d %~dp0
@@ -14,15 +14,11 @@ if not exist venv (
     exit /b 1
 )
 
-REM Aktiviere venv und starte Anwendung
-call venv\Scripts\activate.bat
-python main.py
+REM Starte Anwendung ohne Konsolenfenster mit pythonw.exe
+start "" venv\Scripts\pythonw.exe main.py
 
-REM Fehlerbehandlung
-if %errorLevel% neq 0 (
-    echo.
-    echo FEHLER: Anwendung konnte nicht gestartet werden!
-    echo Fehlercode: %errorLevel%
-    echo.
-    pause
-)
+REM Alternativ: Wenn pythonw.exe nicht funktioniert
+REM start /B venv\Scripts\python.exe main.py
+
+REM Beende Batch sofort (Konsolenfenster verschwindet)
+exit

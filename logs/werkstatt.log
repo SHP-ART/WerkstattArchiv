@@ -16,3 +16,7 @@
 [2025-11-12 19:55:59] INFO     | Profil 'Kompakt' geladen
 [2025-11-12 19:56:21] INFO     | Profil 'Chronologisch' geladen
 [2025-11-12 19:56:32] INFO     | Anwendung wird beendet
+[2025-11-12 20:15:45] INFO     | Erstelle Einstellungen-Tab
+[2025-11-12 20:15:45] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-12 20:15:52] INFO     | Log-System gestartet
+[2025-11-12 20:16:25] INFO     | Anwendung wird beendet
