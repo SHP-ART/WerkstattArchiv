@@ -90,7 +90,8 @@ class MainWindow(ctk.CTk):
         
         # Log-Buffer für Log-Tab
         self.log_buffer = []
-        self.max_log_entries = 1000  # Maximal 1000 Log-Einträge im Speicher
+        self.max_log_entries = 500  # Maximal 500 Log-Einträge im Speicher (Performance)
+        self.max_log_file_lines = 10000  # Maximal 10.000 Zeilen in Log-Datei
         
         # Log-Datei initialisieren
         self.log_file_path = os.path.join(os.path.dirname(__file__), "..", "logs", "werkstatt.log")
@@ -3153,6 +3154,18 @@ class MainWindow(ctk.CTk):
         
         # In Datei schreiben
         try:
+            # Log-Rotation: Wenn Datei zu groß wird, behalte nur letzte 10.000 Zeilen
+            if os.path.exists(self.log_file_path):
+                file_size = os.path.getsize(self.log_file_path)
+                # Rotation bei ~2MB (ca. 20.000 Zeilen bei 100 Zeichen/Zeile)
+                if file_size > 2 * 1024 * 1024:
+                    with open(self.log_file_path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    # Behalte nur letzte 10.000 Zeilen
+                    with open(self.log_file_path, 'w', encoding='utf-8') as f:
+                        f.writelines(lines[-self.max_log_file_lines:])
+            
+            # Schreibe neuen Log-Eintrag
             with open(self.log_file_path, 'a', encoding='utf-8') as f:
                 f.write(log_entry_file + "\n")
         except Exception as e:
@@ -3176,12 +3189,12 @@ class MainWindow(ctk.CTk):
         """Lädt existierende Logs aus der Datei beim Programmstart."""
         try:
             if os.path.exists(self.log_file_path):
-                # Lese nur die letzten N Zeilen (Performance)
+                # Lese nur die letzten 200 Zeilen (Performance)
                 with open(self.log_file_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 
                 # Konvertiere Datei-Format zurück zu Display-Format
-                for line in lines[-self.max_log_entries:]:  # Nur letzte 1000
+                for line in lines[-200:]:  # Nur letzte 200 Zeilen
                     line = line.strip()
                     if line and line.startswith('['):
                         # Extrahiere Daten aus Datei-Format: [YYYY-MM-DD HH:MM:SS] LEVEL | Message
