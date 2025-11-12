@@ -33,13 +33,14 @@ except ImportError:
 class MainWindow(ctk.CTk):
     """Hauptfenster der Anwendung mit customtkinter."""
     
-    def __init__(self, config: Dict[str, Any], customer_manager: CustomerManager):
+    def __init__(self, config: Dict[str, Any], customer_manager: CustomerManager, skip_gui_init: bool = False):
         """
         Initialisiert das Hauptfenster.
         
         Args:
             config: Konfigurationsdictionary
             customer_manager: CustomerManager-Instanz
+            skip_gui_init: Wenn True, wird die GUI-Initialisierung übersprungen (für main_window_start.py)
         """
         super().__init__()
         
@@ -106,11 +107,11 @@ class MainWindow(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
-        # Zeige Ladebildschirm
-        self.show_loading_screen()
-        
-        # Lade GUI asynchron
-        self.after(100, self.init_gui)
+        # Zeige Ladebildschirm nur wenn nicht skip_gui_init
+        if not skip_gui_init:
+            self.show_loading_screen()
+            # Lade GUI asynchron
+            self.after(100, self.init_gui)
     
     def show_loading_screen(self):
         """Zeigt einen Ladebildschirm während die GUI geladen wird."""
@@ -128,19 +129,37 @@ class MainWindow(ctk.CTk):
                                      font=ctk.CTkFont(size=16))
         loading_label.pack(pady=10)
         
-        # Progress Bar
-        self.loading_progress = ctk.CTkProgressBar(self.loading_frame, width=400, mode="indeterminate")
+        # Progress Bar (determiniert für genauen Fortschritt)
+        self.loading_progress = ctk.CTkProgressBar(self.loading_frame, width=400)
         self.loading_progress.pack(pady=30)
-        self.loading_progress.start()
+        self.loading_progress.set(0)
         
         # Status Label
         self.loading_status = ctk.CTkLabel(self.loading_frame, text="Initialisiere...",
                                           font=ctk.CTkFont(size=12),
                                           text_color="gray")
         self.loading_status.pack(pady=5)
+        
+        # Detail Label
+        self.loading_detail = ctk.CTkLabel(self.loading_frame, text="",
+                                          font=ctk.CTkFont(size=10),
+                                          text_color="darkgray")
+        self.loading_detail.pack(pady=2)
+    
+    def update_loading_progress(self, progress: float, status: str, detail: str = ""):
+        """Aktualisiert den Ladefortschritt mit Animation."""
+        import time
+        self.loading_progress.set(progress)
+        self.loading_status.configure(text=status)
+        if detail:
+            self.loading_detail.configure(text=detail)
+        self.update_idletasks()
+        time.sleep(0.5)  # Längere Animation zwischen Steps für bessere UX
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten."""
+        """Initialisiert die GUI-Komponenten vollständig synchron mit Animation."""
+        self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
+        
         # Tabview erstellen
         self.tabview = ctk.CTkTabview(self, command=self.on_tab_change)
         
@@ -154,83 +173,43 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
         
-        # Zeige Loading-Screen und starte Laden
-        self.after(100, self._load_tabs_step1)
+        # Erstelle ALLE Tabs und lade ALLE Daten synchron
+        self.update_loading_progress(0.1, "⚙️  Lade Einstellungen...", "Konfiguration und Pfade")
+        self.create_settings_tab()
+        self.tabs_created["Einstellungen"] = True
         
-    def _show_main_gui_after_loading(self):
-        """Zeigt GUI erst nach vollständigem Laden aller Tabs."""
-        self.loading_status.configure(text="✓ Alle Tabs geladen - Bereit!")
-        self.after(500, self._finalize_gui)
-    
-    def _finalize_gui(self):
-        """Entfernt Loading-Screen und zeigt GUI."""
-        self.loading_frame.pack_forget()
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        self.update_loading_progress(0.2, "📁 Lade Verarbeitung...", "Scan- und Verarbeitungs-Funktionen")
+        self.create_processing_tab()
+        self.tabs_created["Verarbeitung"] = True
         
-        # Wechsle zum Standard-Tab (Verarbeitung)
-        self.tabview.set("Verarbeitung")
-    
-    def _load_tabs_step1(self):
-        """Lädt Einstellungen Tab."""
-        self.loading_status.configure(text="⚙️  Lade Einstellungen...")
-        if not self.tabs_created["Einstellungen"]:
-            self.create_settings_tab()
-            self.tabs_created["Einstellungen"] = True
-        self.after(100, self._load_tabs_step2)
-
-    def _load_tabs_step2(self):
-        """Lädt Verarbeitung Tab."""
-        self.loading_status.configure(text="📁 Lade Verarbeitung...")
-        if not self.tabs_created["Verarbeitung"]:
-            self.create_processing_tab()
-            self.tabs_created["Verarbeitung"] = True
-        self.after(100, self._load_tabs_step3)
-
-    def _load_tabs_step3(self):
-        """Lädt Suche Tab."""
-        self.loading_status.configure(text="🔍 Lade Suche...")
-        if not self.tabs_created["Suche"]:
-            self.create_search_tab()
-            self.tabs_created["Suche"] = True
-        self.after(100, self._load_tabs_step4)
-    
-    def _load_tabs_step4(self):
-        """Lädt Such-Daten SYNCHRON für vollständige Initialisierung."""
-        self.loading_status.configure(text="📊 Lade Such-Daten...")
+        self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "Such-Interface")
+        self.create_search_tab()
+        self.tabs_created["Suche"] = True
+        
+        self.update_loading_progress(0.4, "📊 Lade Such-Daten...", "Dokumenttypen und Jahre aus Datenbank")
         try:
-            # Lade Daten synchron
             doc_types = ["Alle"] + self.document_index.get_all_document_types()
             years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-            
-            # Setze Daten
             self._search_doc_types = doc_types
             self._search_years = years
             self.search_dokument_typ.configure(values=doc_types)
             self.search_jahr.configure(values=years)
             self.tabs_data_loaded["Suche"] = True
+            self.update_loading_progress(0.45, "📊 Such-Daten geladen", 
+                                        f"{len(doc_types)-1} Dokumenttypen, {len(years)-1} Jahre")
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
-            self.search_dokument_typ.configure(values=["Alle"])
-            self.search_jahr.configure(values=["Alle"])
-
-        self.after(100, self._load_tabs_step5)
-    
-    def _load_tabs_step5(self):
-        """Lädt Unklare Dokumente Tab."""
-        self.loading_status.configure(text="⚠️  Lade Unklare Dokumente...")
-        if not self.tabs_created["Unklare Dokumente"]:
-            self.create_unclear_tab()
-            self.tabs_created["Unklare Dokumente"] = True
-        self.after(100, self._load_tabs_step6)
-
-    def _load_tabs_step6(self):
-        """Lädt Legacy Tab."""
-        self.loading_status.configure(text="📜 Lade Legacy-Aufträge...")
-        if not self.tabs_created["Unklare Legacy-Aufträge"]:
-            self.create_unclear_legacy_tab()
-            self.tabs_created["Unklare Legacy-Aufträge"] = True
+            self.update_loading_progress(0.45, "📊 Such-Daten (Fehler)", "Fallback zu Standard-Werten")
         
-        # Legacy-Daten synchron laden
+        self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "Nachbearbeitungs-Interface")
+        self.create_unclear_tab()
+        self.tabs_created["Unklare Dokumente"] = True
+        
+        self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "Legacy-Interface")
+        self.create_unclear_legacy_tab()
+        self.tabs_created["Unklare Legacy-Aufträge"] = True
+        
+        self.update_loading_progress(0.65, "📜 Lade Legacy-Daten...", "Unklare Legacy-Einträge aus DB")
         try:
             unclear_legacy = self.document_index.get_unclear_legacy_entries()
             for doc in unclear_legacy:
@@ -245,40 +224,40 @@ class MainWindow(ctk.CTk):
                     doc.get("hinweis", "")
                 )
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+            self.update_loading_progress(0.7, "📜 Legacy-Daten geladen", 
+                                        f"{len(unclear_legacy)} unklare Einträge")
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
+            self.update_loading_progress(0.7, "📜 Legacy-Daten (Fehler)", "Fallback zu leerem Tab")
         
-        self.after(100, self._load_tabs_step7)
-
-    def _load_tabs_step7(self):
-        """Lädt Virtuelle Kunden Tab."""
-        self.loading_status.configure(text="👥 Lade Virtuelle Kunden...")
-        if not self.tabs_created["Virtuelle Kunden"]:
-            self.create_virtual_customers_tab()
-            self.tabs_created["Virtuelle Kunden"] = True
-        self.after(100, self._load_tabs_step8)
-
-    def _load_tabs_step8(self):
-        """Lädt Regex-Patterns Tab."""
-        self.loading_status.configure(text="🔤 Lade Regex-Patterns...")
-        if not self.tabs_created["Regex-Patterns"]:
-            self.create_patterns_tab()
-            self.tabs_created["Regex-Patterns"] = True
-        self.after(100, self._load_tabs_step9)
-
-    def _load_tabs_step9(self):
-        """Lädt System Tab."""
-        self.loading_status.configure(text="🔧 Lade System...")
-        if not self.tabs_created["System"]:
-            self.create_system_tab()
-            self.tabs_created["System"] = True
-        # Alle Tabs geladen - zeige GUI
-        self.after(100, self._show_main_gui_after_loading)
+        self.update_loading_progress(0.75, "👥 Erstelle Virtuelle Kunden...", "Kunden-Verwaltung")
+        self.create_virtual_customers_tab()
+        self.tabs_created["Virtuelle Kunden"] = True
+        
+        self.update_loading_progress(0.85, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
+        self.create_patterns_tab()
+        self.tabs_created["Regex-Patterns"] = True
+        
+        self.update_loading_progress(0.95, "🔧 Erstelle System...", "System-Tools")
+        self.create_system_tab()
+        self.tabs_created["System"] = True
+        
+        # Alles vollständig geladen
+        self.update_loading_progress(1.0, "✅ Vollständig geladen!", "Alle Tabs und Daten sind bereit")
+        self.after(300, self._finalize_gui)
+        
+    def _finalize_gui(self):
+        """Entfernt Loading-Screen und zeigt GUI."""
+        self.loading_frame.pack_forget()
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Wechsle zum Standard-Tab (Verarbeitung)
+        self.tabview.set("Verarbeitung")
     
     def on_tab_change(self):
-        """Wird aufgerufen wenn ein Tab gewechselt wird."""
-        # Alle Tabs und ihre Daten sind bereits beim Start geladen
-        # Diese Methode ist für zukünftige Erweiterungen reserviert
+        """Wird aufgerufen wenn ein Tab gewechselt wird - alle Daten bereits geladen."""
+        # Alle Tabs und Daten sind bereits vollständig geladen
+        pass
         pass
     
     def create_settings_tab(self):
@@ -3045,10 +3024,13 @@ class MainWindow(ctk.CTk):
 def create_and_run_gui(config: Dict[str, Any], customer_manager: CustomerManager):
     """
     Erstellt und startet die GUI.
+    Verwendet das MainWindow selbst für den Loading-Screen.
     
     Args:
         config: Konfigurationsdictionary
         customer_manager: CustomerManager-Instanz
     """
-    app = MainWindow(config, customer_manager)
+    # Erstelle MainWindow - zeigt automatisch Loading-Screen
+    app = MainWindow(config, customer_manager, skip_gui_init=False)
     app.mainloop()
+
