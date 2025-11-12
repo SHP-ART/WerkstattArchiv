@@ -20,6 +20,7 @@ from services.logger import log_success, log_unclear, log_error
 from services.indexer import DocumentIndex
 from services.vorlagen import VorlagenManager
 from services.pattern_manager import PatternManager
+from services.virtual_customer_manager import VirtualCustomerManager
 
 try:
     from services.watchdog_service import WatchdogService
@@ -48,6 +49,10 @@ class MainWindow(ctk.CTk):
         self.document_index = DocumentIndex()
         self.vorlagen_manager = VorlagenManager()
         self.pattern_manager = PatternManager()
+        self.virtual_customer_manager = VirtualCustomerManager(
+            config.get("root_dir", ""),
+            customer_manager
+        )
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
         self.is_scanning = False  # Flag um Doppel-Scans zu verhindern
@@ -66,6 +71,7 @@ class MainWindow(ctk.CTk):
             "Suche": False,
             "Unklare Dokumente": False,
             "Unklare Legacy-Aufträge": False,
+            "Virtuelle Kunden": False,
             "Regex-Patterns": False,
             "System": False
         }
@@ -144,101 +150,130 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Suche")
         self.tabview.add("Unklare Dokumente")
         self.tabview.add("Unklare Legacy-Aufträge")
+        self.tabview.add("Virtuelle Kunden")
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
         
-        # Starte schrittweises Laden
-        self.after(10, self._load_tabs_step1)
+        # Zeige Loading-Screen und starte Laden
+        self.after(100, self._load_tabs_step1)
+        
+    def _show_main_gui_after_loading(self):
+        """Zeigt GUI erst nach vollständigem Laden aller Tabs."""
+        self.loading_status.configure(text="✓ Alle Tabs geladen - Bereit!")
+        self.after(500, self._finalize_gui)
+    
+    def _finalize_gui(self):
+        """Entfernt Loading-Screen und zeigt GUI."""
+        self.loading_frame.pack_forget()
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Wechsle zum Standard-Tab (Verarbeitung)
+        self.tabview.set("Verarbeitung")
     
     def _load_tabs_step1(self):
         """Lädt Einstellungen Tab."""
-        self.loading_status.configure(text="Lade Tabs...")
-        self.create_settings_tab()
-        self.tabs_created["Einstellungen"] = True
-        self._load_tabs_step2()
+        self.loading_status.configure(text="⚙️  Lade Einstellungen...")
+        if not self.tabs_created["Einstellungen"]:
+            self.create_settings_tab()
+            self.tabs_created["Einstellungen"] = True
+        self.after(100, self._load_tabs_step2)
 
     def _load_tabs_step2(self):
         """Lädt Verarbeitung Tab."""
-        self.create_processing_tab()
-        self.tabs_created["Verarbeitung"] = True
-        self._load_tabs_step3()
+        self.loading_status.configure(text="📁 Lade Verarbeitung...")
+        if not self.tabs_created["Verarbeitung"]:
+            self.create_processing_tab()
+            self.tabs_created["Verarbeitung"] = True
+        self.after(100, self._load_tabs_step3)
 
     def _load_tabs_step3(self):
         """Lädt Suche Tab."""
-        self.create_search_tab()
-        self.tabs_created["Suche"] = True
-        self._load_tabs_step4()
+        self.loading_status.configure(text="🔍 Lade Suche...")
+        if not self.tabs_created["Suche"]:
+            self.create_search_tab()
+            self.tabs_created["Suche"] = True
+        self.after(100, self._load_tabs_step4)
     
     def _load_tabs_step4(self):
-        """Lädt Such-Daten SYNCHRON beim Start."""
-        self.loading_status.configure(text="Lade Such-Daten...")
+        """Lädt Such-Daten SYNCHRON für vollständige Initialisierung."""
+        self.loading_status.configure(text="📊 Lade Such-Daten...")
         try:
-            # Lade echte Daten JETZT (nicht asynchron)
+            # Lade Daten synchron
             doc_types = ["Alle"] + self.document_index.get_all_document_types()
             years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-
-            # Cache die Daten
+            
+            # Setze Daten
             self._search_doc_types = doc_types
             self._search_years = years
-
-            # Setze die Werte
             self.search_dokument_typ.configure(values=doc_types)
             self.search_jahr.configure(values=years)
             self.tabs_data_loaded["Suche"] = True
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
-            # Fallback zu Standard-Werten
             self.search_dokument_typ.configure(values=["Alle"])
             self.search_jahr.configure(values=["Alle"])
 
-        self._load_tabs_step5()
-
+        self.after(100, self._load_tabs_step5)
+    
     def _load_tabs_step5(self):
         """Lädt Unklare Dokumente Tab."""
-        self.create_unclear_tab()
-        self.tabs_created["Unklare Dokumente"] = True
-        self._load_tabs_step6()
+        self.loading_status.configure(text="⚠️  Lade Unklare Dokumente...")
+        if not self.tabs_created["Unklare Dokumente"]:
+            self.create_unclear_tab()
+            self.tabs_created["Unklare Dokumente"] = True
+        self.after(100, self._load_tabs_step6)
 
     def _load_tabs_step6(self):
         """Lädt Legacy Tab."""
-        self.loading_status.configure(text="Erstelle Legacy-Tab...")
-        self.create_unclear_legacy_tab()
-        self.tabs_created["Unklare Legacy-Aufträge"] = True
-
-        # Lade Legacy-Daten SYNCHRON beim Start
-        self.loading_status.configure(text="Lade Legacy-Daten...")
+        self.loading_status.configure(text="📜 Lade Legacy-Aufträge...")
+        if not self.tabs_created["Unklare Legacy-Aufträge"]:
+            self.create_unclear_legacy_tab()
+            self.tabs_created["Unklare Legacy-Aufträge"] = True
+        
+        # Legacy-Daten synchron laden
         try:
-            self.load_unclear_legacy_entries()
+            unclear_legacy = self.document_index.get_unclear_legacy_entries()
+            for doc in unclear_legacy:
+                self._add_legacy_row(
+                    doc.get("ziel_pfad", ""),
+                    doc.get("kunden_name", "Unbekannt"),
+                    doc.get("auftrag_nr", "-"),
+                    doc.get("dokument_typ", "Unbekannt"),
+                    doc.get("kennzeichen", "-"),
+                    doc.get("fin", "-"),
+                    doc.get("confidence", 0.0),
+                    doc.get("hinweis", "")
+                )
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
-
-        self._load_tabs_step7()
+        
+        self.after(100, self._load_tabs_step7)
 
     def _load_tabs_step7(self):
-        """Lädt Regex-Patterns Tab."""
-        self.create_patterns_tab()
-        self.tabs_created["Regex-Patterns"] = True
-        self._load_tabs_step8()
+        """Lädt Virtuelle Kunden Tab."""
+        self.loading_status.configure(text="👥 Lade Virtuelle Kunden...")
+        if not self.tabs_created["Virtuelle Kunden"]:
+            self.create_virtual_customers_tab()
+            self.tabs_created["Virtuelle Kunden"] = True
+        self.after(100, self._load_tabs_step8)
 
     def _load_tabs_step8(self):
+        """Lädt Regex-Patterns Tab."""
+        self.loading_status.configure(text="🔤 Lade Regex-Patterns...")
+        if not self.tabs_created["Regex-Patterns"]:
+            self.create_patterns_tab()
+            self.tabs_created["Regex-Patterns"] = True
+        self.after(100, self._load_tabs_step9)
+
+    def _load_tabs_step9(self):
         """Lädt System Tab."""
-        self.create_system_tab()
-        self.tabs_created["System"] = True
-        self._load_tabs_finish()
-
-    def _load_tabs_finish(self):
-        """Beendet das Laden."""
-        self.loading_status.configure(text="Bereit!")
-        self._show_main_gui()
-    
-    def _show_main_gui(self):
-        """Zeigt die Haupt-GUI an."""
-        self.loading_frame.pack_forget()
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Wechsle zum Standard-Tab (Verarbeitung)
-        self.tabview.set("Verarbeitung")
+        self.loading_status.configure(text="🔧 Lade System...")
+        if not self.tabs_created["System"]:
+            self.create_system_tab()
+            self.tabs_created["System"] = True
+        # Alle Tabs geladen - zeige GUI
+        self.after(100, self._show_main_gui_after_loading)
     
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
@@ -300,6 +335,149 @@ class MainWindow(ctk.CTk):
         # Status-Label
         self.settings_status = ctk.CTkLabel(settings_frame, text="")
         self.settings_status.pack(pady=5)
+    
+    def create_virtual_customers_tab(self):
+        """Erstellt den Tab für virtuelle Kunden-Verwaltung."""
+        tab = self.tabview.tab("Virtuelle Kunden")
+        
+        # Scrollable Frame
+        scroll_frame = ctk.CTkScrollableFrame(tab)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Überschrift
+        title = ctk.CTkLabel(scroll_frame, text="Virtuelle Kunden-Verwaltung",
+                            font=ctk.CTkFont(size=20, weight="bold"))
+        title.pack(pady=10)
+        
+        # Info-Text
+        info_text = (
+            "Hier sehen Sie alle virtuellen Kunden (VKxxxx), die automatisch erstellt wurden,\n"
+            "wenn keine Kundennummer erkannt werden konnte. Sie können diese virtuellen\n"
+            "Kundennummern durch echte ersetzen - alle zugehörigen Dateien werden automatisch umbenannt."
+        )
+        info_label = ctk.CTkLabel(scroll_frame, text=info_text,
+                                  font=ctk.CTkFont(size=11),
+                                  text_color="gray")
+        info_label.pack(pady=10)
+        
+        # Refresh-Button
+        refresh_btn = ctk.CTkButton(scroll_frame, text="🔄 Liste aktualisieren",
+                                   command=self.refresh_virtual_customers_list,
+                                   width=200)
+        refresh_btn.pack(pady=10)
+        
+        # Frame für virtuelle Kunden-Liste
+        self.virtual_customers_frame = ctk.CTkFrame(scroll_frame)
+        self.virtual_customers_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Lade initiale Liste
+        self.refresh_virtual_customers_list()
+    
+    def refresh_virtual_customers_list(self):
+        """Aktualisiert die Liste der virtuellen Kunden."""
+        # Lösche alte Einträge
+        for widget in self.virtual_customers_frame.winfo_children():
+            widget.destroy()
+        
+        # Hole virtuelle Kunden
+        virtual_customers = self.virtual_customer_manager.get_all_virtual_customers()
+        
+        if not virtual_customers:
+            no_virt_label = ctk.CTkLabel(self.virtual_customers_frame,
+                                         text="✓ Keine virtuellen Kunden vorhanden",
+                                         font=ctk.CTkFont(size=14),
+                                         text_color="green")
+            no_virt_label.pack(pady=20)
+            return
+        
+        # Header
+        header_frame = ctk.CTkFrame(self.virtual_customers_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(header_frame, text="Virtuelle Nr.", width=100,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        ctk.CTkLabel(header_frame, text="Name", width=200,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        ctk.CTkLabel(header_frame, text="Dateien", width=80,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        ctk.CTkLabel(header_frame, text="Aktion", width=300,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        
+        # Einträge für jeden virtuellen Kunden
+        for virt_nr, name in virtual_customers:
+            # Zähle Dateien
+            files = self.virtual_customer_manager.find_files_with_customer(virt_nr)
+            file_count = len(files)
+            
+            # Zeile
+            row_frame = ctk.CTkFrame(self.virtual_customers_frame)
+            row_frame.pack(fill="x", padx=5, pady=2)
+            
+            # Virtuelle Nummer
+            ctk.CTkLabel(row_frame, text=virt_nr, width=100).pack(side="left", padx=5)
+            
+            # Name
+            ctk.CTkLabel(row_frame, text=name, width=200).pack(side="left", padx=5)
+            
+            # Datei-Anzahl
+            ctk.CTkLabel(row_frame, text=str(file_count), width=80).pack(side="left", padx=5)
+            
+            # Eingabefelder für echte Kundennummer
+            real_nr_entry = ctk.CTkEntry(row_frame, placeholder_text="Echte Kd-Nr",
+                                        width=100)
+            real_nr_entry.pack(side="left", padx=5)
+            
+            real_name_entry = ctk.CTkEntry(row_frame, placeholder_text="Echter Name",
+                                          width=150)
+            real_name_entry.pack(side="left", padx=5)
+            
+            # Zuordnen-Button
+            assign_btn = ctk.CTkButton(
+                row_frame, 
+                text="→ Zuordnen",
+                width=100,
+                command=lambda v=virt_nr, r_nr=real_nr_entry, r_name=real_name_entry:
+                    self.assign_real_customer(v, r_nr, r_name)
+            )
+            assign_btn.pack(side="left", padx=5)
+    
+    def assign_real_customer(self, virtual_nr, real_nr_entry, real_name_entry):
+        """Ordnet einem virtuellen Kunden eine echte Kundennummer zu."""
+        real_nr = real_nr_entry.get().strip()
+        real_name = real_name_entry.get().strip()
+        
+        if not real_nr or not real_name:
+            messagebox.showerror("Fehler", "Bitte echte Kundennummer und Namen eingeben!")
+            return
+        
+        # Bestätigung
+        files = self.virtual_customer_manager.find_files_with_customer(virtual_nr)
+        msg = (
+            f"Virtuelle Kundennummer '{virtual_nr}' wird durch '{real_nr}' ersetzt.\n\n"
+            f"Betroffen: {len(files)} Dateien\n"
+            f"Neuer Kundenname: {real_name}\n\n"
+            f"Alle Dateien werden umbenannt. Fortfahren?"
+        )
+        
+        if not messagebox.askyesno("Bestätigung", msg):
+            return
+        
+        # Zuordnung durchführen
+        success, error_msg, renamed_count = self.virtual_customer_manager.assign_real_customer_to_virtual(
+            virtual_nr, real_nr, real_name
+        )
+        
+        if success:
+            messagebox.showinfo("Erfolg",
+                               f"✓ Virtuelle Kundennummer ersetzt!\n\n"
+                               f"{renamed_count} Dateien umbenannt.\n"
+                               f"{virtual_nr} → {real_nr}")
+            
+            # Liste aktualisieren
+            self.refresh_virtual_customers_list()
+        else:
+            messagebox.showerror("Fehler",
+                                f"Fehler beim Zuordnen:\n{error_msg}")
     
     def create_system_tab(self):
         """Erstellt den System-Tab für Backup und Updates."""
@@ -1070,10 +1248,11 @@ class MainWindow(ctk.CTk):
         # Setze Scanning-Flag
         self.is_scanning = True
 
-        # Button sofort deaktivieren
+        # Button sofort deaktivieren - mit doppeltem Update für sofortige Reaktion
         self.scan_btn.configure(state="disabled", text="⏳ Scanne...")
         self.process_status.configure(text="🔍 Scanne Eingangsordner... Bitte warten...", text_color="blue")
-        self.update_idletasks()  # GUI sofort aktualisieren
+        self.update_idletasks()  # GUI-Layout aktualisieren
+        self.update()  # Alle pending Events verarbeiten
 
         # Scan im Thread ausführen für bessere Performance
         threading.Thread(target=self._scan_files_thread, args=(input_dir,), daemon=True).start()

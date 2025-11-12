@@ -181,9 +181,26 @@ def process_document(file_path: str, analysis_result: Dict[str, Any],
         - is_clear: True wenn klar zuordenbar
         - reason: Grund falls unklar, sonst leerer String
     """
-    # Auto-Add: Neuen Kunden aus Dokumentdaten hinzufügen
+    # Kundennummer prüfen und ggf. virtuelle erstellen
     kunden_nr = analysis_result.get("kunden_nr")
-    if kunden_nr and not customer_manager.customer_exists(kunden_nr):
+    
+    # NEUE LOGIK: Wenn keine Kundennummer gefunden, erstelle virtuelle
+    if not kunden_nr:
+        # Versuche Namen aus Dokument zu extrahieren
+        customer_name = analysis_result.get("kunden_name") or "Unbekannter Kunde"
+        
+        # Erstelle virtuelle Kundennummer
+        kunden_nr = customer_manager.create_virtual_customer(customer_name)
+        
+        # Aktualisiere analysis_result
+        analysis_result["kunden_nr"] = kunden_nr
+        analysis_result["kunden_name"] = customer_name
+        analysis_result["is_virtual"] = True
+        
+        print(f"   ℹ️  Keine Kundennummer erkannt → Virtuelle Nummer erstellt: {kunden_nr}")
+    
+    # Auto-Add: Neuen Kunden aus Dokumentdaten hinzufügen (nur nicht-virtuelle)
+    elif not customer_manager.customer_exists(kunden_nr):
         # Kunde existiert noch nicht -> automatisch hinzufügen
         customer_manager.add_or_update_customer(
             kunden_nr=kunden_nr,

@@ -124,13 +124,10 @@ if not exist config.json (
 REM Prüfe ob kunden.csv existiert
 echo.
 if not exist config\kunden.csv (
-    echo Erstelle Beispiel-Kundendatei...
-    (
-        echo Kundennr,Name,Strasse,PLZ,Ort,Telefon,Email
-        echo 10001,Max Mustermann,Musterstraße 1,12345,Musterstadt,0123-456789,max@example.com
-    ) > config\kunden.csv
+    echo Erstelle leere Kundendatei...
+    type nul > config\kunden.csv
     echo [OK] config\kunden.csv erstellt
-    echo [INFO] Bitte fuegen Sie Ihre Kunden hinzu!
+    echo [INFO] Bitte fuegen Sie Ihre Kunden hinzu (Format: Kundennr;Name;PLZ;Ort;Strasse;Telefon^)
 ) else (
     echo [OK] Kundendatei existiert bereits
 )

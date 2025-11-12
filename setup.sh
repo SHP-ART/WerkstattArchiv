@@ -145,13 +145,10 @@ fi
 # Prüfe ob kunden.csv existiert
 echo ""
 if [ ! -f "config/kunden.csv" ]; then
-    echo "👥 Erstelle Beispiel-Kundendatei..."
-    cat > config/kunden.csv << 'EOF'
-Kundennr,Name,Strasse,PLZ,Ort,Telefon,Email
-10001,Max Mustermann,Musterstraße 1,12345,Musterstadt,0123-456789,max@example.com
-EOF
+    echo "👥 Erstelle leere Kundendatei..."
+    touch config/kunden.csv
     echo -e "${GREEN}✓ config/kunden.csv erstellt${NC}"
-    echo -e "${YELLOW}Bitte fügen Sie Ihre Kunden hinzu!${NC}"
+    echo -e "${YELLOW}Bitte fügen Sie Ihre Kunden hinzu (Format: Kundennr;Name;PLZ;Ort;Straße;Telefon)${NC}"
 else
     echo -e "${GREEN}✓ Kundendatei existiert bereits${NC}"
 fi

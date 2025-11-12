@@ -86,7 +86,7 @@ def main():
         description = __description__
     except ImportError:
         app_name = "WerkstattArchiv"
-        version = "0.8.0"
+        version = "0.8.5"
         description = "Dokumentenverwaltung"
     
     print("=" * 60)

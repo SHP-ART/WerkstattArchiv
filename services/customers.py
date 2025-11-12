@@ -259,3 +259,82 @@ class CustomerManager:
         except Exception as e:
             print(f"❌ Fehler beim Speichern der Kundendatei: {e}")
             return False
+    
+    def create_virtual_customer(self, name: str = "Unbekannter Kunde") -> str:
+        """
+        Erstellt eine virtuelle Kundennummer für unbekannte Kunden.
+        Format: VK0001, VK0002, etc.
+        
+        Args:
+            name: Optionaler Name für den virtuellen Kunden
+            
+        Returns:
+            Die generierte virtuelle Kundennummer
+        """
+        # Finde höchste virtuelle Kundennummer
+        virtual_numbers = [
+            int(kn[2:]) for kn in self.customers.keys() 
+            if kn.startswith("VK") and kn[2:].isdigit()
+        ]
+        next_num = max(virtual_numbers, default=0) + 1
+        
+        virtual_kunden_nr = f"VK{next_num:04d}"
+        
+        # Erstelle virtuellen Kunden
+        virtual_customer = Customer(
+            kunden_nr=virtual_kunden_nr,
+            name=name
+        )
+        self.customers[virtual_kunden_nr] = virtual_customer
+        
+        # Speichere in CSV
+        self.save_customers()
+        
+        print(f"✓ Virtuelle Kundennummer erstellt: {virtual_kunden_nr} ({name})")
+        return virtual_kunden_nr
+    
+    def is_virtual_customer(self, kunden_nr: str) -> bool:
+        """
+        Prüft ob eine Kundennummer virtuell ist.
+        
+        Args:
+            kunden_nr: Die zu prüfende Kundennummer
+            
+        Returns:
+            True wenn virtuell (startet mit VK)
+        """
+        return kunden_nr.startswith("VK")
+    
+    def replace_virtual_customer(self, old_virtual_nr: str, new_real_nr: str, 
+                                 customer_name: str) -> bool:
+        """
+        Ersetzt eine virtuelle Kundennummer durch eine echte.
+        
+        Args:
+            old_virtual_nr: Die alte virtuelle Kundennummer (VKxxxx)
+            new_real_nr: Die neue echte Kundennummer
+            customer_name: Name des echten Kunden
+            
+        Returns:
+            True wenn erfolgreich
+        """
+        if not self.is_virtual_customer(old_virtual_nr):
+            return False
+        
+        # Entferne virtuellen Kunden
+        if old_virtual_nr in self.customers:
+            del self.customers[old_virtual_nr]
+        
+        # Füge echten Kunden hinzu (falls noch nicht vorhanden)
+        if new_real_nr not in self.customers:
+            real_customer = Customer(
+                kunden_nr=new_real_nr,
+                name=customer_name
+            )
+            self.customers[new_real_nr] = real_customer
+        
+        # Speichere
+        self.save_customers()
+        
+        print(f"✓ Virtuelle Kundennummer {old_virtual_nr} ersetzt durch {new_real_nr}")
+        return True
