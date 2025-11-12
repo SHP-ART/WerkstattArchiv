@@ -690,6 +690,9 @@ class MainWindow(ctk.CTk):
         self.log_status = ctk.CTkLabel(tab, text="")
         self.log_status.pack(pady=5)
         
+        # Lade vorherige Logs aus Datei
+        self._load_existing_logs()
+        
         # Initial-Nachricht
         self.add_log("INFO", "Log-System gestartet")
 
