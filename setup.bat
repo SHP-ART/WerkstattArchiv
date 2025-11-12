@@ -132,6 +132,19 @@ if not exist config\kunden.csv (
     echo [OK] Kundendatei existiert bereits
 )
 
+REM Erstelle vehicles.csv falls nicht vorhanden
+echo.
+if not exist data\vehicles.csv (
+    echo Erstelle leere Fahrzeugdatenbank...
+    (
+        echo fin,kennzeichen,kunden_nr,marke,modell,erstzulassung,letzte_aktualisierung
+    ) > data\vehicles.csv
+    echo [OK] data\vehicles.csv erstellt
+    echo [INFO] Wird automatisch beim Verarbeiten von Dokumenten gefuellt
+) else (
+    echo [OK] Fahrzeugdatenbank existiert bereits
+)
+
 REM Tesseract-Pfad automatisch erkennen
 tesseract --version >nul 2>&1
 if %errorlevel% equ 0 (

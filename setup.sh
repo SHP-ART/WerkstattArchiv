@@ -153,6 +153,19 @@ else
     echo -e "${GREEN}✓ Kundendatei existiert bereits${NC}"
 fi
 
+# Erstelle vehicles.csv falls nicht vorhanden
+echo ""
+if [ ! -f "data/vehicles.csv" ]; then
+    echo "🚗 Erstelle leere Fahrzeugdatenbank..."
+    cat > data/vehicles.csv << 'EOF'
+fin,kennzeichen,kunden_nr,marke,modell,erstzulassung,letzte_aktualisierung
+EOF
+    echo -e "${GREEN}✓ data/vehicles.csv erstellt${NC}"
+    echo -e "${YELLOW}Wird automatisch beim Verarbeiten von Dokumenten gefüllt${NC}"
+else
+    echo -e "${GREEN}✓ Fahrzeugdatenbank existiert bereits${NC}"
+fi
+
 # Tesseract-Pfad automatisch erkennen und in config eintragen
 if command -v tesseract &> /dev/null; then
     TESSERACT_PATH=$(which tesseract)
