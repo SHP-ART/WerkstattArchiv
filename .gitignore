@@ -45,6 +45,12 @@ beispiel_auftraege/
 *.jpg
 *.jpeg
 
+# Backups (enthalten sensible Daten)
+backups/
+*.zip
+*.tar.gz
+*.bak
+
 # macOS
 .DS_Store
 
