@@ -277,6 +277,41 @@ class UpdateManager:
             return False, f"❌ Fehler beim Update:\n{str(e)}"
     
     def restart_application(self):
-        """Startet die Anwendung neu."""
+        """Startet die Anwendung neu (plattformübergreifend)."""
+        import subprocess
+        import platform
+        
         python = sys.executable
-        os.execl(python, python, *sys.argv)
+        script = os.path.abspath(sys.argv[0])
+        
+        # Windows benötigt spezielles Handling
+        if platform.system() == 'Windows':
+            # Erstelle Batch-Datei für verzögerten Neustart
+            batch_content = f"""@echo off
+timeout /t 2 /nobreak >nul
+start "" "{python}" "{script}"
+exit
+"""
+            batch_file = os.path.join(tempfile.gettempdir(), "werkstatt_restart.bat")
+            with open(batch_file, 'w') as f:
+                f.write(batch_content)
+            
+            # Starte Batch-Datei und beende aktuelle Anwendung
+            # CREATE_NEW_CONSOLE = 0x00000010, DETACHED_PROCESS = 0x00000008
+            subprocess.Popen(
+                [batch_file],
+                shell=True,
+                creationflags=0x00000010 | 0x00000008,  # Windows-spezifische Flags
+                close_fds=True
+            )
+        else:
+            # macOS/Linux: Nutze nohup für Hintergrund-Prozess
+            subprocess.Popen(
+                [python, script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True
+            )
+        
+        # Beende aktuelle Anwendung
+        sys.exit(0)
