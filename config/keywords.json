@@ -1,0 +1,189 @@
+{
+  "_info": "Schlagwort-Konfiguration für erweiterte Dokumenten-Suche",
+  "_hinweis": "Schlagwörter werden case-insensitive gesucht",
+  
+  "kategorien": {
+    "Fehlercode": {
+      "beschreibung": "Fehlercodes und Diagnosecodes",
+      "schlagwoerter": [
+        "fehlercode",
+        "fehler-code",
+        "dtc",
+        "diagnostic trouble code",
+        "p0",
+        "p1",
+        "u0",
+        "u1",
+        "b0",
+        "b1",
+        "c0",
+        "c1",
+        "obd",
+        "fehler:"
+      ],
+      "aktiv": false
+    },
+    
+    "Achsvermessung": {
+      "beschreibung": "Achsvermessungsprotokolle und Einstellwerte",
+      "schlagwoerter": [
+        "achsvermessung",
+        "achs-vermessung",
+        "spur",
+        "sturz",
+        "nachlauf",
+        "spreizung",
+        "vorspur",
+        "einzelspur",
+        "gesamtspur",
+        "geometrie",
+        "fahrwerksvermessung"
+      ],
+      "aktiv": false
+    },
+    
+    "Diagnose": {
+      "beschreibung": "Diagnose und Prüfberichte",
+      "schlagwoerter": [
+        "diagnose",
+        "diagnosebericht",
+        "prüfung",
+        "prüfbericht",
+        "test",
+        "testbericht",
+        "messung",
+        "messprotokoll",
+        "fehlersuche"
+      ],
+      "aktiv": false
+    },
+    
+    "Inspektion": {
+      "beschreibung": "Inspektions- und Wartungsarbeiten",
+      "schlagwoerter": [
+        "inspektion",
+        "service",
+        "wartung",
+        "ölwechsel",
+        "öl-service",
+        "intervall",
+        "durchsicht",
+        "checkup"
+      ],
+      "aktiv": false
+    },
+    
+    "Reparatur": {
+      "beschreibung": "Reparatur- und Instandsetzungsarbeiten",
+      "schlagwoerter": [
+        "reparatur",
+        "repariert",
+        "instandsetzung",
+        "instandgesetzt",
+        "austausch",
+        "ausgetauscht",
+        "montage",
+        "demontage",
+        "gewechselt",
+        "ersetzt"
+      ],
+      "aktiv": false
+    },
+    
+    "TÜV/AU": {
+      "beschreibung": "TÜV und Abgasuntersuchung",
+      "schlagwoerter": [
+        "tüv",
+        "tuev",
+        "hauptuntersuchung",
+        "hu",
+        "au",
+        "abgasuntersuchung",
+        "abgas-untersuchung",
+        "asu",
+        "prüfplakette"
+      ],
+      "aktiv": false
+    },
+    
+    "Klimaanlage": {
+      "beschreibung": "Klimaanlagen-Service und -Wartung",
+      "schlagwoerter": [
+        "klimaanlage",
+        "klima",
+        "klimaservice",
+        "kältemittel",
+        "r134a",
+        "r1234yf",
+        "klimagas",
+        "klimakompressor",
+        "kondensator"
+      ],
+      "aktiv": false
+    },
+    
+    "Bremsen": {
+      "beschreibung": "Bremsensystem und -wartung",
+      "schlagwoerter": [
+        "bremse",
+        "bremsen",
+        "bremsbelag",
+        "bremsbeläge",
+        "bremsscheibe",
+        "bremsscheiben",
+        "bremssattel",
+        "bremszylinder",
+        "bremsflüssigkeit",
+        "abs"
+      ],
+      "aktiv": false
+    },
+    
+    "Reifen": {
+      "beschreibung": "Reifen und Räder",
+      "schlagwoerter": [
+        "reifen",
+        "pneu",
+        "rad",
+        "räder",
+        "felge",
+        "felgen",
+        "reifenwechsel",
+        "reifendruck",
+        "profiltiefe",
+        "rdks"
+      ],
+      "aktiv": false
+    },
+    
+    "Motor": {
+      "beschreibung": "Motor und Motorsteuerung",
+      "schlagwoerter": [
+        "motor",
+        "motorsteuerung",
+        "motorsteuergerät",
+        "ecu",
+        "ecm",
+        "zündkerze",
+        "zündkerzen",
+        "einspritzung",
+        "turbolader",
+        "ventil"
+      ],
+      "aktiv": false
+    }
+  },
+  
+  "_anleitung": {
+    "aktivierung": "Setze 'aktiv' auf true um Kategorie zu aktivieren",
+    "hinzufuegen": "Neue Schlagwörter zur 'schlagwoerter'-Liste hinzufügen",
+    "neue_kategorie": "Kopiere eine bestehende Kategorie und passe an",
+    "beispiel": {
+      "NeueKategorie": {
+        "beschreibung": "Beschreibung der Kategorie",
+        "schlagwoerter": ["wort1", "wort2", "wort3"],
+        "aktiv": true
+      }
+    }
+  }
+}
