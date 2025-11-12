@@ -22,6 +22,7 @@ from services.vorlagen import VorlagenManager
 from services.pattern_manager import PatternManager
 from services.virtual_customer_manager import VirtualCustomerManager
 from core.folder_structure_manager import FolderStructureManager
+from services.keyword_detector import KeywordDetector
 
 try:
     from services.watchdog_service import WatchdogService
@@ -58,6 +59,7 @@ class MainWindow(ctk.CTk):
         self.folder_structure_manager = FolderStructureManager(
             config.get("folder_structure", {})
         )
+        self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
         self.is_scanning = False  # Flag um Doppel-Scans zu verhindern
@@ -330,6 +332,9 @@ class MainWindow(ctk.CTk):
         # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
         self.create_folder_structure_settings(scroll_frame)
         
+        # ========== SCHLAGWORT-EINSTELLUNGEN ==========
+        self.create_keyword_settings(scroll_frame)
+        
         # ========== AKTIONS-BUTTONS ==========
         action_frame = ctk.CTkFrame(scroll_frame)
         action_frame.pack(fill="x", padx=10, pady=20)
@@ -540,6 +545,148 @@ class MainWindow(ctk.CTk):
             self.structure_preview.insert("end", "✅ Beispiel-Pfad:\n\n")
             self.structure_preview.insert("end", f"{folder_path}/\n")
             self.structure_preview.insert("end", f"  └─ {filename}\n")
+    
+    def create_keyword_settings(self, parent_frame):
+        """Erstellt die Einstellungen für Schlagwort-Erkennung."""
+        keyword_frame = ctk.CTkFrame(parent_frame)
+        keyword_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Überschrift
+        title = ctk.CTkLabel(keyword_frame, text="🏷️  Schlagwort-Erkennung", 
+                            font=ctk.CTkFont(size=20, weight="bold"))
+        title.pack(pady=10)
+        
+        # Info-Text
+        info = ctk.CTkLabel(keyword_frame, 
+                           text="Aktiviere Kategorien für automatische Schlagwort-Erkennung in Dokumenten",
+                           font=ctk.CTkFont(size=12))
+        info.pack(pady=5)
+        
+        # Statistiken
+        stats = self.keyword_detector.get_statistics()
+        stats_text = f"📊 {stats['total_categories']} Kategorien · {stats['total_keywords']} Schlagwörter · {stats['active_categories']} aktiv"
+        self.keyword_stats_label = ctk.CTkLabel(keyword_frame, text=stats_text,
+                                               font=ctk.CTkFont(size=11, slant="italic"))
+        self.keyword_stats_label.pack(pady=5)
+        
+        # Kategorien in Grid
+        categories_frame = ctk.CTkFrame(keyword_frame)
+        categories_frame.pack(fill="x", padx=20, pady=10)
+        
+        # Speichere Checkbox-Variablen
+        self.keyword_category_vars = {}
+        
+        all_categories = self.keyword_detector.get_all_categories()
+        
+        # 2 Spalten Layout
+        col_count = 2
+        for idx, category in enumerate(all_categories):
+            row = idx // col_count
+            col = idx % col_count
+            
+            # Frame für Kategorie
+            cat_frame = ctk.CTkFrame(categories_frame)
+            cat_frame.grid(row=row, column=col, padx=10, pady=5, sticky="ew")
+            
+            # Checkbox
+            is_active = self.keyword_detector.is_active(category)
+            var = ctk.BooleanVar(value=is_active)
+            self.keyword_category_vars[category] = var
+            
+            checkbox = ctk.CTkCheckBox(
+                cat_frame, 
+                text=category,
+                variable=var,
+                command=lambda cat=category: self.on_keyword_category_changed(cat),
+                font=ctk.CTkFont(size=12, weight="bold")
+            )
+            checkbox.pack(anchor="w", padx=10, pady=5)
+            
+            # Info zu Kategorie
+            cat_info = self.keyword_detector.get_category_info(category)
+            desc = cat_info.get("beschreibung", "")
+            keyword_count = len(cat_info.get("schlagwoerter", []))
+            
+            info_label = ctk.CTkLabel(
+                cat_frame,
+                text=f"{desc} ({keyword_count} Schlagwörter)",
+                font=ctk.CTkFont(size=10),
+                text_color="gray"
+            )
+            info_label.pack(anchor="w", padx=30, pady=(0, 5))
+        
+        # Grid-Spalten gleich breit machen
+        categories_frame.grid_columnconfigure(0, weight=1)
+        categories_frame.grid_columnconfigure(1, weight=1)
+        
+        # Bearbeiten-Bereich (zunächst versteckt)
+        edit_frame = ctk.CTkFrame(keyword_frame)
+        edit_frame.pack(fill="x", padx=20, pady=10)
+        
+        edit_title = ctk.CTkLabel(edit_frame, text="⚙️ Erweiterte Einstellungen",
+                                 font=ctk.CTkFont(size=14, weight="bold"))
+        edit_title.pack(pady=5)
+        
+        edit_info = ctk.CTkLabel(
+            edit_frame,
+            text="Schlagwörter können in config/keywords.json manuell bearbeitet werden",
+            font=ctk.CTkFont(size=10, slant="italic")
+        )
+        edit_info.pack(pady=5)
+        
+        # Button zum Öffnen der Konfigurationsdatei
+        open_config_btn = ctk.CTkButton(
+            edit_frame,
+            text="📝 Konfigurationsdatei öffnen",
+            command=self.open_keyword_config
+        )
+        open_config_btn.pack(pady=5)
+    
+    def on_keyword_category_changed(self, category: str):
+        """Wird aufgerufen wenn Kategorie-Checkbox geändert wird."""
+        is_checked = self.keyword_category_vars[category].get()
+        
+        if is_checked:
+            success = self.keyword_detector.activate_category(category)
+            action = "aktiviert"
+        else:
+            success = self.keyword_detector.deactivate_category(category)
+            action = "deaktiviert"
+        
+        if success:
+            self.add_log("INFO", f"Schlagwort-Kategorie '{category}' {action}")
+            # Update Statistiken
+            self.update_keyword_statistics()
+        else:
+            self.add_log("ERROR", f"Fehler beim Ändern der Kategorie '{category}'")
+            # Zurücksetzen bei Fehler
+            self.keyword_category_vars[category].set(not is_checked)
+    
+    def update_keyword_statistics(self):
+        """Aktualisiert die Statistik-Anzeige."""
+        stats = self.keyword_detector.get_statistics()
+        stats_text = f"📊 {stats['total_categories']} Kategorien · {stats['total_keywords']} Schlagwörter · {stats['active_categories']} aktiv"
+        if hasattr(self, 'keyword_stats_label'):
+            self.keyword_stats_label.configure(text=stats_text)
+    
+    def open_keyword_config(self):
+        """Öffnet die Schlagwort-Konfigurationsdatei im Standard-Editor."""
+        import subprocess
+        import platform
+        
+        config_path = self.keyword_detector.config_path
+        
+        try:
+            if platform.system() == 'Darwin':  # macOS
+                subprocess.run(['open', config_path])
+            elif platform.system() == 'Windows':
+                subprocess.run(['start', config_path], shell=True)
+            else:  # Linux
+                subprocess.run(['xdg-open', config_path])
+            
+            self.add_log("INFO", "Konfigurationsdatei geöffnet", config_path)
+        except Exception as e:
+            self.add_log("ERROR", "Fehler beim Öffnen der Datei", str(e))
     
     def create_virtual_customers_tab(self):
         """Erstellt den Tab für virtuelle Kunden-Verwaltung."""
