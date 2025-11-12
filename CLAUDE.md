@@ -156,3 +156,4 @@ Version is stored in `version.py` with three fields:
 - `__description__`: Brief description
 
 Update this file when releasing new versions. The auto-updater compares versions semantically.
+- Kann man erkennen das eine pdf eine oder zwei seiten hat?

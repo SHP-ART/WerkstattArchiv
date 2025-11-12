@@ -5,6 +5,9 @@ Hauptfenster mit customtkinter für die Dokumentenverwaltung.
 
 import os
 import json
+import time
+import shutil
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -47,6 +50,10 @@ class MainWindow(ctk.CTk):
         self.pattern_manager = PatternManager()
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
+        self.is_scanning = False  # Flag um Doppel-Scans zu verhindern
+
+        # Liste der gescannten Dateien
+        self.scanned_files = []
         
         # Cache für Such-Daten
         self._search_doc_types = []
@@ -141,136 +148,103 @@ class MainWindow(ctk.CTk):
         self.tabview.add("System")
         
         # Starte schrittweises Laden
-        self.after(50, self._load_tabs_step1)
+        self.after(10, self._load_tabs_step1)
     
     def _load_tabs_step1(self):
         """Lädt Einstellungen Tab."""
-        self.loading_status.configure(text="Erstelle Einstellungen...")
-        self.update_idletasks()
+        self.loading_status.configure(text="Lade Tabs...")
         self.create_settings_tab()
         self.tabs_created["Einstellungen"] = True
-        self.after(50, self._load_tabs_step2)
-    
+        self._load_tabs_step2()
+
     def _load_tabs_step2(self):
         """Lädt Verarbeitung Tab."""
-        self.loading_status.configure(text="Erstelle Verarbeitung...")
-        self.update_idletasks()
         self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
-        self.after(50, self._load_tabs_step3)
-    
+        self._load_tabs_step3()
+
     def _load_tabs_step3(self):
         """Lädt Suche Tab."""
-        self.loading_status.configure(text="Erstelle Suche...")
-        self.update_idletasks()
         self.create_search_tab()
         self.tabs_created["Suche"] = True
-        self.after(50, self._load_tabs_step4)
+        self._load_tabs_step4()
     
     def _load_tabs_step4(self):
-        """Lädt Such-Daten."""
+        """Lädt Such-Daten SYNCHRON beim Start."""
         self.loading_status.configure(text="Lade Such-Daten...")
-        self.update_idletasks()
-        
-        # Lade Daten synchron beim Start
-        doc_types = ["Alle"] + self.document_index.get_all_document_types()
-        years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-        
-        # Cache die Daten
-        self._search_doc_types = doc_types
-        self._search_years = years
-        
-        # Update GUI
-        self.search_dokument_typ.configure(values=doc_types)
-        self.search_jahr.configure(values=years)
-        self.tabs_data_loaded["Suche"] = True
-        
-        self.after(50, self._load_tabs_step5)
-    
+        try:
+            # Lade echte Daten JETZT (nicht asynchron)
+            doc_types = ["Alle"] + self.document_index.get_all_document_types()
+            years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+
+            # Cache die Daten
+            self._search_doc_types = doc_types
+            self._search_years = years
+
+            # Setze die Werte
+            self.search_dokument_typ.configure(values=doc_types)
+            self.search_jahr.configure(values=years)
+            self.tabs_data_loaded["Suche"] = True
+        except Exception as e:
+            print(f"Fehler beim Laden der Such-Daten: {e}")
+            # Fallback zu Standard-Werten
+            self.search_dokument_typ.configure(values=["Alle"])
+            self.search_jahr.configure(values=["Alle"])
+
+        self._load_tabs_step5()
+
     def _load_tabs_step5(self):
         """Lädt Unklare Dokumente Tab."""
-        self.loading_status.configure(text="Erstelle Unklare Dokumente...")
-        self.update_idletasks()
         self.create_unclear_tab()
         self.tabs_created["Unklare Dokumente"] = True
-        self.after(50, self._load_tabs_step6)
-    
+        self._load_tabs_step6()
+
     def _load_tabs_step6(self):
         """Lädt Legacy Tab."""
-        self.loading_status.configure(text="Erstelle Legacy-Aufträge...")
-        self.update_idletasks()
+        self.loading_status.configure(text="Erstelle Legacy-Tab...")
         self.create_unclear_legacy_tab()
         self.tabs_created["Unklare Legacy-Aufträge"] = True
-        self.after(50, self._load_tabs_step7)
-    
+
+        # Lade Legacy-Daten SYNCHRON beim Start
+        self.loading_status.configure(text="Lade Legacy-Daten...")
+        try:
+            self.load_unclear_legacy_entries()
+            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+        except Exception as e:
+            print(f"Fehler beim Laden der Legacy-Daten: {e}")
+
+        self._load_tabs_step7()
+
     def _load_tabs_step7(self):
         """Lädt Regex-Patterns Tab."""
-        self.loading_status.configure(text="Erstelle Regex-Patterns...")
-        self.update_idletasks()
         self.create_patterns_tab()
         self.tabs_created["Regex-Patterns"] = True
-        self.after(50, self._load_tabs_step8)
-    
+        self._load_tabs_step8()
+
     def _load_tabs_step8(self):
         """Lädt System Tab."""
-        self.loading_status.configure(text="Erstelle System...")
-        self.update_idletasks()
         self.create_system_tab()
         self.tabs_created["System"] = True
-        self.after(100, self._load_tabs_finish)
-    
+        self._load_tabs_finish()
+
     def _load_tabs_finish(self):
         """Beendet das Laden."""
         self.loading_status.configure(text="Bereit!")
-        self.update_idletasks()
-        self.after(200, self._show_main_gui)
+        self._show_main_gui()
     
     def _show_main_gui(self):
         """Zeigt die Haupt-GUI an."""
         self.loading_frame.pack_forget()
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        # Wechsle zu Verarbeitung Tab
+
+        # Wechsle zum Standard-Tab (Verarbeitung)
         self.tabview.set("Verarbeitung")
     
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
-        current_tab = self.tabview.get()
-        
-        # Alle Tabs sind bereits beim Start erstellt, daher nur Daten nachladen wenn nötig
-        
-        # Daten laden wenn Tab bereits erstellt aber Daten noch nicht geladen
-        if current_tab == "Suche":
-            if not self.tabs_data_loaded["Suche"]:
-                # Verwende gecachte Daten falls vorhanden
-                if self._search_doc_types and self._search_years:
-                    self.search_dokument_typ.configure(values=self._search_doc_types)
-                    self.search_jahr.configure(values=self._search_years)
-                    self.tabs_data_loaded["Suche"] = True
-                else:
-                    # Lade Dokumenttypen und Jahre asynchron
-                    def load_search_data():
-                        doc_types = ["Alle"] + self.document_index.get_all_document_types()
-                        years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-
-                        # Cache speichern
-                        self._search_doc_types = doc_types
-                        self._search_years = years
-
-                        # Update GUI im Haupt-Thread
-                        self.after(0, lambda: self.search_dokument_typ.configure(values=doc_types))
-                        self.after(0, lambda: self.search_jahr.configure(values=years))
-
-                    # Starte in Thread
-                    thread = threading.Thread(target=load_search_data, daemon=True)
-                    thread.start()
-                    self.tabs_data_loaded["Suche"] = True
-        
-        elif current_tab == "Unklare Legacy-Aufträge":
-            # Lade Legacy-Einträge nur wenn noch nicht geladen
-            if not self.tabs_data_loaded["Unklare Legacy-Aufträge"]:
-                self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
-                thread = threading.Thread(target=self.load_unclear_legacy_entries, daemon=True)
-                thread.start()
+        # Alle Tabs und ihre Daten sind bereits beim Start geladen
+        # Diese Methode ist für zukünftige Erweiterungen reserviert
+        pass
     
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
@@ -330,13 +304,13 @@ class MainWindow(ctk.CTk):
     def create_system_tab(self):
         """Erstellt den System-Tab für Backup und Updates."""
         tab = self.tabview.tab("System")
-        
-        # Frame für System
-        system_frame = ctk.CTkFrame(tab)
+
+        # Scrollable Frame für System (damit man scrollen kann bei kleinem Fenster)
+        system_frame = ctk.CTkScrollableFrame(tab)
         system_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # Überschrift
-        title = ctk.CTkLabel(system_frame, text="System & Wartung", 
+        title = ctk.CTkLabel(system_frame, text="System & Wartung",
                             font=ctk.CTkFont(size=20, weight="bold"))
         title.pack(pady=10)
         
@@ -418,7 +392,70 @@ class MainWindow(ctk.CTk):
         # Update-Status
         self.update_status = ctk.CTkLabel(system_frame, text="")
         self.update_status.pack(pady=5)
-    
+
+        # Separator
+        separator2 = ctk.CTkFrame(system_frame, height=2, fg_color="gray")
+        separator2.pack(fill="x", padx=20, pady=20)
+
+        # Datenbank-Bereich
+        db_title = ctk.CTkLabel(system_frame, text="🗄️ Datenbank-Verwaltung",
+                                font=ctk.CTkFont(size=18, weight="bold"))
+        db_title.pack(pady=10)
+
+        db_info = ctk.CTkLabel(
+            system_frame,
+            text="Verwalte die Dokument-Index-Datenbank: Statistiken anzeigen, neu aufbauen oder zurücksetzen",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        db_info.pack(pady=5)
+
+        # Datenbank-Statistiken
+        self.db_stats_label = ctk.CTkLabel(
+            system_frame,
+            text="Lade Statistiken...",
+            font=ctk.CTkFont(size=11),
+            text_color="lightblue"
+        )
+        self.db_stats_label.pack(pady=5)
+
+        db_buttons_frame = ctk.CTkFrame(system_frame)
+        db_buttons_frame.pack(pady=10)
+
+        db_stats_btn = ctk.CTkButton(
+            db_buttons_frame,
+            text="📊 Statistiken aktualisieren",
+            command=self.update_db_stats,
+            width=200,
+            fg_color="blue"
+        )
+        db_stats_btn.pack(side="left", padx=5)
+
+        db_rebuild_btn = ctk.CTkButton(
+            db_buttons_frame,
+            text="🔄 Datenbank neu aufbauen",
+            command=self.rebuild_database,
+            width=200,
+            fg_color="orange"
+        )
+        db_rebuild_btn.pack(side="left", padx=5)
+
+        db_clear_btn = ctk.CTkButton(
+            db_buttons_frame,
+            text="🗑️ Datenbank löschen",
+            command=self.clear_database,
+            width=200,
+            fg_color="red"
+        )
+        db_clear_btn.pack(side="left", padx=5)
+
+        # Datenbank-Status
+        self.db_status = ctk.CTkLabel(system_frame, text="")
+        self.db_status.pack(pady=5)
+
+        # Initial Statistiken laden
+        self.update_db_stats()
+
     def create_processing_tab(self):
         """Erstellt den Verarbeitungs-Tab."""
         tab = self.tabview.tab("Verarbeitung")
@@ -466,9 +503,18 @@ class MainWindow(ctk.CTk):
         self.vorlage_info.pack(side="left", padx=10)
         self._update_vorlage_info()
         
-        self.scan_btn = ctk.CTkButton(control_frame, text="Eingangsordner scannen",
-                                command=self.scan_input_folder)
+        self.scan_btn = ctk.CTkButton(control_frame, text="📂 Eingangsordner scannen",
+                                command=self.scan_input_folder,
+                                width=200)
         self.scan_btn.pack(side="left", padx=10, pady=10)
+        
+        # Verarbeiten-Button (initial deaktiviert)
+        self.process_btn = ctk.CTkButton(control_frame, text="▶️ Verarbeitung starten",
+                                        command=self.start_processing,
+                                        width=200,
+                                        fg_color="green",
+                                        state="disabled")
+        self.process_btn.pack(side="left", padx=10, pady=10)
         
         # Watchdog Controls (wenn verfügbar)
         if WATCHDOG_AVAILABLE:
@@ -483,6 +529,18 @@ class MainWindow(ctk.CTk):
         
         self.process_status = ctk.CTkLabel(control_frame, text="Bereit")
         self.process_status.pack(side="left", padx=10)
+        
+        # Fortschrittsbalken (initial versteckt)
+        progress_container = ctk.CTkFrame(tab, fg_color="transparent")
+        progress_container.pack(fill="x", padx=10, pady=(5, 0))
+        
+        self.progress_bar = ctk.CTkProgressBar(progress_container, width=400, height=20)
+        self.progress_bar.set(0)
+        self.progress_bar.pack_forget()  # Initial versteckt
+        
+        self.progress_label = ctk.CTkLabel(progress_container, text="", 
+                                          font=ctk.CTkFont(size=10))
+        self.progress_label.pack_forget()  # Initial versteckt
         
         # Tabelle für Ergebnisse
         table_frame = ctk.CTkFrame(tab)
@@ -995,11 +1053,11 @@ class MainWindow(ctk.CTk):
         self.vorlage_info.configure(text=f"ℹ️ {vorlage.beschreibung}")
     
     def scan_input_folder(self):
-        """Scannt den Eingangsordner und verarbeitet alle Dokumente."""
-        # Verhindere Doppelverarbeitung
-        if self.is_processing:
-            messagebox.showwarning("Verarbeitung läuft",
-                                 "Es läuft bereits eine Verarbeitung. Bitte warten Sie, bis sie abgeschlossen ist.")
+        """Scannt den Eingangsordner und zeigt die gefundenen Dateien an."""
+        # Prüfe ob bereits ein Scan läuft
+        if self.is_scanning:
+            messagebox.showwarning("Scan läuft",
+                                 "Es läuft bereits ein Scan. Bitte warten Sie, bis er abgeschlossen ist.")
             return
 
         input_dir = self.config.get("input_dir")
@@ -1009,17 +1067,119 @@ class MainWindow(ctk.CTk):
                                "Eingangsordner nicht gefunden. Bitte Einstellungen prüfen.")
             return
 
+        # Setze Scanning-Flag
+        self.is_scanning = True
+
+        # Button sofort deaktivieren
+        self.scan_btn.configure(state="disabled", text="⏳ Scanne...")
+        self.process_status.configure(text="🔍 Scanne Eingangsordner... Bitte warten...", text_color="blue")
+        self.update_idletasks()  # GUI sofort aktualisieren
+
+        # Scan im Thread ausführen für bessere Performance
+        threading.Thread(target=self._scan_files_thread, args=(input_dir,), daemon=True).start()
+    
+    def _scan_files_thread(self, input_dir):
+        """Thread-Funktion für schnellen Scan ohne GUI-Blockierung."""
+        try:
+            # Dateien finden (schnell, ohne GUI-Updates)
+            files = []
+            all_files = os.listdir(input_dir)
+            
+            for file in all_files:
+                file_path = os.path.join(input_dir, file)
+                if os.path.isfile(file_path):
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext in [".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
+                        files.append(file_path)
+            
+            if not files:
+                self.after(0, lambda: self.process_status.configure(text="❌ Keine Dateien gefunden", text_color="orange"))
+                self.after(0, lambda: self.scan_btn.configure(state="normal", text="📂 Eingangsordner scannen"))
+                self.is_scanning = False
+                # MessageBox: Keine Dateien gefunden
+                self.after(100, lambda: messagebox.showinfo("Scan abgeschlossen",
+                                                            "Keine Dateien gefunden.\n\nDer Eingangsordner ist leer."))
+                return
+            
+            # Speichere Dateien
+            self.scanned_files = files
+            
+            # GUI-Updates im Main-Thread
+            self.after(0, self._display_scanned_files, files)
+            
+        except Exception as e:
+            self.after(0, lambda: self.process_status.configure(
+                text=f"❌ Fehler: {str(e)}", text_color="red"
+            ))
+            self.after(0, lambda: self.scan_btn.configure(state="normal", text="📂 Eingangsordner scannen"))
+            self.is_scanning = False
+            # MessageBox: Fehler
+            self.after(100, lambda e=e: messagebox.showerror("Fehler beim Scannen",
+                                                             f"Ein Fehler ist aufgetreten:\n\n{str(e)}"))
+    
+    def _display_scanned_files(self, files):
+        """Zeigt gescannte Dateien in der GUI an."""
+
+        # Alte Ergebnisse löschen
+        for widget in self.results_container.winfo_children():
+            widget.destroy()
+
+        # Status und Buttons sofort aktualisieren
+        self.process_status.configure(
+            text=f"✓ {len(files)} Datei(en) gefunden - Klicken Sie auf 'Verarbeitung starten'",
+            text_color="green"
+        )
+        self.scan_btn.configure(state="normal", text="📂 Eingangsordner scannen")
+        self.process_btn.configure(state="normal")
+
+        # Scanning-Flag zurücksetzen
+        self.is_scanning = False
+
+        # MessageBox: Dateien gefunden
+        messagebox.showinfo("Scan abgeschlossen",
+                           f"✓ {len(files)} Datei(en) gefunden!\n\nKlicken Sie auf 'Verarbeitung starten', um fortzufahren.")
+        
+        # Zeige Dateien in kleineren Chunks
+        chunk_size = 10
+        for i in range(0, len(files), chunk_size):
+            chunk = files[i:i + chunk_size]
+            for idx, file_path in enumerate(chunk):
+                filename = os.path.basename(file_path)
+                file_idx = i + idx
+                self._add_result_row(filename, {}, f"⏸️ Bereit ({file_idx+1}/{len(files)})", "gray")
+            
+            # Nach jedem Chunk: GUI-Update erlauben
+            if (i + chunk_size) % 30 == 0:  # Nur alle 30 Dateien
+                self.update_idletasks()
+    
+    def start_processing(self):
+        """Startet die Verarbeitung der gescannten Dateien."""
+        
+        if not self.scanned_files:
+            messagebox.showwarning("Keine Dateien", "Bitte zuerst den Eingangsordner scannen.")
+            return
+        
+        if self.is_processing:
+            messagebox.showwarning("Verarbeitung läuft",
+                                 "Es läuft bereits eine Verarbeitung. Bitte warten Sie, bis sie abgeschlossen ist.")
+            return
+        
         # Setze Processing-Flag
         self.is_processing = True
 
-        # Button deaktivieren während Verarbeitung
-        self.scan_btn.configure(state="disabled", text="⏳ Verarbeite...")
+        # Buttons deaktivieren
+        self.scan_btn.configure(state="disabled")
+        self.process_btn.configure(state="disabled", text="⏳ VERARBEITUNG LÄUFT...")
+
+        # Fortschrittsbalken anzeigen und zurücksetzen
+        self.progress_bar.set(0)
+        self.progress_bar.pack(pady=5)
+        self.progress_label.pack(pady=(0, 5))
+        self.progress_label.configure(text=f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
 
         # Status aktualisieren
-        self.process_status.configure(text="🔄 Verarbeitung läuft...", text_color="blue")
-
-        # GUI aktualisieren
-        self.update_idletasks()
+        self.process_status.configure(text="🔄 VERARBEITUNG GESTARTET - Bitte warten...", text_color="blue")
+        self.update()  # GUI sofort aktualisieren (vollständig, nicht nur idletasks)
 
         # In separatem Thread verarbeiten
         thread = threading.Thread(target=self._process_documents)
@@ -1028,52 +1188,47 @@ class MainWindow(ctk.CTk):
     
     def _process_documents(self):
         """Verarbeitet alle Dokumente im Eingangsordner (läuft in Thread)."""
-        input_dir = self.config.get("input_dir")
+
         root_dir = self.config.get("root_dir")
         unclear_dir = self.config.get("unclear_dir")
+        duplicates_dir = self.config.get("duplicates_dir")
         tesseract_path = self.config.get("tesseract_path")
 
         # Validierung
-        if not input_dir or not isinstance(input_dir, str):
-            self.after(0, lambda: self.process_status.configure(text="Fehler: Eingangsordner nicht konfiguriert", text_color="red"))
-            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
-            self.is_processing = False
-            return
-
         if not root_dir or not isinstance(root_dir, str):
             self.after(0, lambda: self.process_status.configure(text="Fehler: Basis-Verzeichnis nicht konfiguriert", text_color="red"))
-            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal"))
+            self.after(0, lambda: self.process_btn.configure(state="normal", text="▶️ Verarbeitung starten"))
             self.is_processing = False
             return
 
         if not unclear_dir or not isinstance(unclear_dir, str):
             self.after(0, lambda: self.process_status.configure(text="Fehler: Unklar-Ordner nicht konfiguriert", text_color="red"))
-            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal"))
+            self.after(0, lambda: self.process_btn.configure(state="normal", text="▶️ Verarbeitung starten"))
             self.is_processing = False
             return
 
-        # Alte Ergebnisse löschen (im Haupt-Thread)
-        def clear_results():
-            # Optimierung: Verwende winfo_children nur einmal
-            children = self.results_container.winfo_children()
-            for widget in children:
-                widget.destroy()
-            self.unclear_documents.clear()
+        if not duplicates_dir or not isinstance(duplicates_dir, str):
+            self.after(0, lambda: self.process_status.configure(text="Fehler: Duplikate-Ordner nicht konfiguriert", text_color="red"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal"))
+            self.after(0, lambda: self.process_btn.configure(state="normal", text="▶️ Verarbeitung starten"))
+            self.is_processing = False
+            return
 
-        self.after_idle(clear_results)
+        # Duplikate-Ordner erstellen, falls nicht vorhanden
+        os.makedirs(duplicates_dir, exist_ok=True)
         
-        # Dateien im Eingangsordner finden
-        files = []
-        for file in os.listdir(input_dir):
-            file_path = os.path.join(input_dir, file)
-            if os.path.isfile(file_path):
-                ext = os.path.splitext(file)[1].lower()
-                if ext in [".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
-                    files.append(file_path)
+        # Verwende die gescannten Dateien
+        files = self.scanned_files
+
+        # Unklare Dokumente Liste leeren (aber Ergebnisse NICHT löschen - sie bleiben sichtbar!)
+        self.unclear_documents.clear()
         
         if not files:
             self.after(0, lambda: self.process_status.configure(text="Keine Dateien gefunden", text_color="orange"))
-            self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal"))
+            self.after(0, lambda: self.process_btn.configure(state="normal", text="▶️ Verarbeitung starten"))
             self.is_processing = False
             return
 
@@ -1090,34 +1245,106 @@ class MainWindow(ctk.CTk):
         legacy_resolver = LegacyResolver(self.customer_manager, vehicle_manager)
 
         # Dateien verarbeiten
+        success_count = 0
+        unclear_count = 0
+        error_count = 0
+        duplicate_count = 0
+        
         for i, file_path in enumerate(files):
             filename = os.path.basename(file_path)
 
             try:
-                # Zeige aktuelle Datei als "wird verarbeitet"
-                self.after_idle(lambda f=filename, idx=i, total=len(files): self._add_result_row(
-                    f, {}, f"⏳ Wird verarbeitet... ({idx+1}/{total})", "yellow"
-                ))
-                
-                # Status aktualisieren
-                self.after_idle(lambda f=filename, idx=i, total=len(files): self.process_status.configure(
-                    text=f"🔄 Verarbeite: {f} ({idx+1}/{total})",
-                    text_color="blue"
-                ))
-                
+                # Prüfe ob Datei noch existiert
+                if not os.path.exists(file_path):
+                    self.after(0, lambda f=filename: self._update_result_row(f, {}, "⚠ Datei nicht gefunden", "orange"))
+                    error_count += 1
+                    continue
+
+                # Fortschritt PRO DATEI: Start bei 0%
+                def update_start(f=filename, idx=i, total=len(files)):
+                    self._update_result_row(f, {}, f"⏳ Wird verarbeitet...", "yellow")
+                    self.progress_bar.set(0)
+                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Starte...")
+                    self.process_status.configure(
+                        text=f"🔄 Datei {idx+1}/{total}: {f}",
+                        text_color="blue"
+                    )
+                self.after(0, update_start)
+
+                # Kurze Pause für GUI-Update
+                time.sleep(0.1)
+
+                # Fortschritt: 20% - Datei wird gelesen
+                def update_reading(f=filename, idx=i, total=len(files)):
+                    self.progress_bar.set(0.2)
+                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Lese Datei...")
+                self.after(0, update_reading)
+
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
-                    file_path, 
+                    file_path,
                     tesseract_path,
                     vorlage_name=self.vorlagen_manager.get_active_vorlage().name,
                     vorlagen_manager=self.vorlagen_manager,
                     legacy_resolver=legacy_resolver
                 )
-                
+
+                # Fortschritt: 70% - Analyse abgeschlossen
+                def update_analyzed(f=filename, idx=i, total=len(files)):
+                    self.progress_bar.set(0.7)
+                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Analyse abgeschlossen...")
+                self.after(0, update_analyzed)
+
+                # DUPLIKATS-PRÜFUNG
+                auftrag_nr = analysis.get("auftrag_nr")
+                dokument_typ = analysis.get("dokument_typ")
+
+                if auftrag_nr:
+                    duplicate = self.document_index.check_duplicate(auftrag_nr, dokument_typ)
+                    if duplicate:
+                        # Duplikat gefunden - verschiebe in Duplikate-Ordner
+                        dup_name = duplicate.get("dateiname", "unbekannt")
+                        dup_path = duplicate.get("ziel_pfad", "unbekannt")
+
+                        # Erstelle Ziel-Pfad im Duplikate-Ordner
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        dup_filename = f"DUPLIKAT_{timestamp}_{filename}"
+                        dup_target_path = os.path.join(duplicates_dir, dup_filename)
+
+                        # Verschiebe Datei
+                        try:
+                            shutil.move(file_path, dup_target_path)
+
+                            def update_duplicate(f=filename, dup=dup_name, idx=i, total=len(files)):
+                                self.progress_bar.set(1.0)
+                                self.progress_label.configure(text=f"Datei {idx+1} von {total}: Duplikat erkannt und verschoben!")
+                                self._update_result_row(f, analysis, f"⚠ Duplikat → verschoben in Duplikate/", "orange")
+                            self.after(0, update_duplicate)
+
+                            # Zur Datenbank hinzufügen (als Duplikat markiert)
+                            analysis["hinweis"] = f"Duplikat von: {dup_name}"
+                            self.document_index.add_document(file_path, dup_target_path, analysis, "duplicate")
+
+                            print(f"⚠️  Duplikat erkannt: {filename} → Auftrag {auftrag_nr} existiert bereits als {dup_name}")
+                            print(f"   Verschoben nach: {dup_target_path}")
+                            duplicate_count += 1
+                            time.sleep(0.2)
+                            continue
+                        except Exception as e:
+                            print(f"❌ Fehler beim Verschieben des Duplikats: {e}")
+                            # Bei Fehler normal verarbeiten
+                            pass
+
                 # Dokument verarbeiten und verschieben
                 target_path, is_clear, reason = process_document(
                     file_path, analysis, root_dir, unclear_dir, self.customer_manager
                 )
+
+                # Fortschritt: 90% - Dokument verschoben
+                def update_moved(f=filename, idx=i, total=len(files)):
+                    self.progress_bar.set(0.9)
+                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Dokument organisiert...")
+                self.after(0, update_moved)
                 
                 # Logging
                 if is_clear:
@@ -1125,11 +1352,13 @@ class MainWindow(ctk.CTk):
                     status = "✓ Verschoben"
                     color = "green"
                     doc_status = "success"
+                    success_count += 1
                 else:
                     log_unclear(file_path, target_path, analysis, analysis["confidence"], reason)
                     status = "⚠ Unklar"
                     color = "orange"
                     doc_status = "unclear"
+                    unclear_count += 1
                     
                     # Zu unklaren Dokumenten hinzufügen
                     self.unclear_documents.append({
@@ -1141,28 +1370,63 @@ class MainWindow(ctk.CTk):
                 
                 # Zum Index hinzufügen
                 self.document_index.add_document(file_path, target_path, analysis, doc_status)
-                
+
                 # Bei unklaren Legacy-Aufträgen: auch zur unclear_legacy Tabelle hinzufügen
                 if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
                     self.document_index.add_unclear_legacy(target_path, analysis)
-                
-                # Aktualisiere die Zeile mit finalem Status
-                self.after_idle(lambda f=filename, a=analysis, s=status, c=color: self._update_result_row(f, a, s, c))
+
+                # Fortschritt: 100% - Fertig!
+                def update_complete(f=filename, a=analysis, s=status, c=color, idx=i, total=len(files)):
+                    self.progress_bar.set(1.0)
+                    self.progress_label.configure(text=f"Datei {idx+1} von {total}: Fertig!")
+                    self._update_result_row(f, a, s, c)
+                self.after(0, update_complete)
+
+                # Kurze Pause zwischen Dateien (für bessere Sichtbarkeit)
+                time.sleep(0.2)
 
             except Exception as e:
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
-                # Fehler anzeigen (im Haupt-Thread)
-                self.after_idle(lambda f=filename, err=str(e): self._update_result_row(f, {}, f"✗ Fehler: {err}", "red"))
+                error_count += 1
+                # Fehler anzeigen (im Haupt-Thread) mit Fortschrittsbalken auf 100%
+                def update_error(f=filename, err=str(e), idx=i, total=len(files)):
+                    self.progress_bar.set(1.0)
+                    self.progress_label.configure(text=f"Datei {idx+1} von {total}: Fehler!")
+                    self._update_result_row(f, {}, f"✗ Fehler: {err}", "red")
+                self.after(0, update_error)
+                time.sleep(0.2)
 
-        # Status aktualisieren (im Haupt-Thread)
+        # Status aktualisieren mit Zusammenfassung (im Haupt-Thread)
+        summary_parts = []
+        if success_count > 0:
+            summary_parts.append(f"✓ {success_count} erfolgreich")
+        if unclear_count > 0:
+            summary_parts.append(f"⚠ {unclear_count} unklar")
+        if duplicate_count > 0:
+            summary_parts.append(f"🔄 {duplicate_count} Duplikat(e)")
+        if error_count > 0:
+            summary_parts.append(f"✗ {error_count} Fehler")
+
+        summary = " | ".join(summary_parts) if summary_parts else "Keine Dokumente verarbeitet"
+        
         self.after(0, lambda: self.process_status.configure(
-            text=f"✓ Fertig: {len(files)} Datei(en) verarbeitet",
+            text=f"✓ Fertig: {len(files)} Datei(en) verarbeitet ({summary})",
             text_color="green"
         ))
+        
+        # Fortschrittsbalken auf 100% setzen und dann verstecken
+        self.after(0, lambda: self.progress_bar.set(1.0))
+        self.after(0, lambda: self.progress_label.configure(text=f"{len(files)} / {len(files)} Dokumente verarbeitet - Fertig!"))
+        self.after(2000, lambda: self.progress_bar.pack_forget())  # Nach 2 Sekunden ausblenden
+        self.after(2000, lambda: self.progress_label.pack_forget())
 
         # Button wieder aktivieren (im Haupt-Thread)
-        self.after(0, lambda: self.scan_btn.configure(state="normal", text="Eingangsordner scannen"))
+        self.after(0, lambda: self.scan_btn.configure(state="normal"))
+        self.after(0, lambda: self.process_btn.configure(state="disabled", text="▶️ Verarbeitung starten"))
+        
+        # Liste leeren
+        self.scanned_files = []
 
         # Processing-Flag zurücksetzen
         self.is_processing = False
@@ -1170,11 +1434,30 @@ class MainWindow(ctk.CTk):
         # Unklare Dokumente anzeigen (im Haupt-Thread)
         self.after(0, self._update_unclear_tab)
 
-        # Cache für Such-Daten invalidieren (neu laden beim nächsten Tab-Wechsel)
-        self._search_doc_types = []
-        self._search_years = []
-        self.tabs_data_loaded["Suche"] = False
-        self.tabs_data_loaded["Unklare Legacy-Aufträge"] = False
+        # MessageBox mit Ergebnis-Zusammenfassung
+        def show_result_message():
+            # Erstelle detaillierte Nachricht
+            message_lines = [f"Verarbeitung abgeschlossen!\n"]
+            message_lines.append(f"Gesamt: {len(files)} Datei(en)\n")
+
+            if success_count > 0:
+                message_lines.append(f"✓ {success_count} erfolgreich verarbeitet")
+            if unclear_count > 0:
+                message_lines.append(f"⚠ {unclear_count} unklar (siehe Tab 'Unklare Dokumente')")
+            if duplicate_count > 0:
+                message_lines.append(f"🔄 {duplicate_count} Duplikat(e) übersprungen")
+            if error_count > 0:
+                message_lines.append(f"✗ {error_count} Fehler aufgetreten")
+
+            message = "\n".join(message_lines)
+
+            # Zeige passende MessageBox
+            if error_count > 0 or unclear_count > 0:
+                messagebox.showwarning("Verarbeitung abgeschlossen", message)
+            else:
+                messagebox.showinfo("Verarbeitung erfolgreich", message)
+
+        self.after(100, show_result_message)
     
     def _add_result_row(self, filename: str, analysis: Dict[str, Any], 
                        status: str, color: str):
@@ -2281,13 +2564,301 @@ class MainWindow(ctk.CTk):
             self.update_status.configure(text="✗ Update fehlgeschlagen", text_color="red")
             messagebox.showerror("Update fehlgeschlagen", message)
     
+    def update_db_stats(self):
+        """Aktualisiert die Datenbank-Statistiken."""
+        try:
+            stats = self.document_index.get_statistics()
+
+            total = stats.get("total", 0)
+            by_status = stats.get("by_status", {})
+            success = by_status.get("success", 0)
+            unclear = by_status.get("unclear", 0)
+            duplicates = by_status.get("duplicate", 0)
+            errors = by_status.get("error", 0)
+
+            stats_text = (
+                f"📊 Gesamt: {total} Dokumente  |  "
+                f"✓ Erfolgreich: {success}  |  "
+                f"⚠ Unklar: {unclear}  |  "
+                f"🔄 Duplikate: {duplicates}  |  "
+                f"❌ Fehler: {errors}"
+            )
+
+            self.db_stats_label.configure(text=stats_text, text_color="lightblue")
+        except Exception as e:
+            self.db_stats_label.configure(
+                text=f"❌ Fehler beim Laden der Statistiken: {e}",
+                text_color="red"
+            )
+
+    def rebuild_database(self):
+        """Baut die Datenbank komplett neu auf aus den vorhandenen Dateien."""
+        # Bestätigung einholen
+        result = messagebox.askyesno(
+            "Datenbank neu aufbauen",
+            "Möchten Sie die Datenbank wirklich neu aufbauen?\n\n"
+            "Dies wird:\n"
+            "1. Die aktuelle Datenbank löschen\n"
+            "2. Alle Dokumente im Archiv scannen\n"
+            "3. Die Datenbank neu erstellen\n\n"
+            "Dieser Vorgang kann einige Minuten dauern!"
+        )
+
+        if not result:
+            return
+
+        # Backup erstellen VOR dem Neuaufbau
+        self.db_status.configure(text="💾 Erstelle Backup vor Neuaufbau...", text_color="blue")
+        self.update()
+
+        from services.backup_manager import BackupManager
+        from datetime import datetime
+
+        backup_manager = BackupManager(self.config)
+        backup_name = f"AUTO_VOR_DB_REBUILD_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        success, backup_path, message = backup_manager.create_backup(backup_name)
+
+        if not success:
+            error_msg = f"Backup fehlgeschlagen!\n\n{message}\n\nNeuaufbau abgebrochen."
+            self.db_status.configure(
+                text="❌ Backup fehlgeschlagen - Abbruch",
+                text_color="red"
+            )
+            messagebox.showerror("Backup fehlgeschlagen", error_msg)
+            return
+
+        # Backup erfolgreich
+        self.db_status.configure(text=f"✓ Backup erstellt, baue Datenbank neu auf...", text_color="blue")
+        self.update()
+
+        def rebuild_thread():
+            try:
+                root_dir = self.config.get("root_dir")
+                if not root_dir or not os.path.exists(root_dir):
+                    self.after(0, lambda: self.db_status.configure(
+                        text="❌ Basis-Verzeichnis nicht gefunden!",
+                        text_color="red"
+                    ))
+                    return
+
+                # Datenbank löschen
+                import sqlite3
+                db_path = "werkstatt_index.db"
+                if os.path.exists(db_path):
+                    os.remove(db_path)
+
+                # Neuen Index erstellen
+                from services.indexer import DocumentIndex
+                new_index = DocumentIndex(db_path)
+
+                # Alle PDFs im Archiv finden
+                pdf_files = []
+                for root, dirs, files in os.walk(root_dir):
+                    for file in files:
+                        if file.lower().endswith('.pdf'):
+                            pdf_files.append(os.path.join(root, file))
+
+                self.after(0, lambda: self.db_status.configure(
+                    text=f"📄 {len(pdf_files)} Dokumente gefunden, analysiere...",
+                    text_color="blue"
+                ))
+
+                # Dokumente analysieren und zur Datenbank hinzufügen
+                from services.analyzer import analyze_document
+                count = 0
+                for pdf_file in pdf_files:
+                    try:
+                        # Einfache Metadaten aus Pfad extrahieren
+                        analysis = {
+                            "kunden_nr": None,
+                            "kunden_name": None,
+                            "auftrag_nr": None,
+                            "dokument_typ": None,
+                            "jahr": None,
+                            "confidence": 1.0
+                        }
+
+                        # Versuche Infos aus Pfad zu extrahieren
+                        path_parts = pdf_file.split(os.sep)
+                        for part in path_parts:
+                            # Kundennummer und Name (z.B. "28307 - Anne Schultze")
+                            if " - " in part and part[0].isdigit():
+                                kunde_parts = part.split(" - ", 1)
+                                analysis["kunden_nr"] = kunde_parts[0]
+                                analysis["kunden_name"] = kunde_parts[1] if len(kunde_parts) > 1 else None
+                            # Jahr
+                            elif part.isdigit() and len(part) == 4:
+                                analysis["jahr"] = int(part)
+
+                        # Dateiname analysieren (z.B. "78708_Auftrag_...")
+                        filename = os.path.basename(pdf_file)
+                        name_parts = filename.replace(".pdf", "").split("_")
+                        if len(name_parts) >= 2:
+                            if name_parts[0].isdigit():
+                                analysis["auftrag_nr"] = name_parts[0]
+                            if len(name_parts) > 1:
+                                analysis["dokument_typ"] = name_parts[1]
+
+                        # Zur Datenbank hinzufügen
+                        new_index.add_document(pdf_file, pdf_file, analysis, "success")
+                        count += 1
+
+                        if count % 10 == 0:
+                            self.after(0, lambda c=count, t=len(pdf_files): self.db_status.configure(
+                                text=f"📊 {c} von {t} Dokumenten verarbeitet...",
+                                text_color="blue"
+                            ))
+                    except Exception as e:
+                        print(f"Fehler bei {pdf_file}: {e}")
+                        continue
+
+                # Fertig
+                self.after(0, lambda: self.db_status.configure(
+                    text=f"✓ Datenbank neu aufgebaut! {count} Dokumente (Backup: {os.path.basename(backup_path)})",
+                    text_color="green"
+                ))
+
+                # Statistiken aktualisieren
+                self.after(0, self.update_db_stats)
+
+                # Erfolgs-Popup mit Backup-Info
+                def show_success():
+                    messagebox.showinfo(
+                        "Neuaufbau erfolgreich",
+                        f"✓ Datenbank erfolgreich neu aufgebaut!\n\n"
+                        f"{count} Dokumente wurden indexiert.\n\n"
+                        f"Backup gespeichert unter:\n{backup_path}"
+                    )
+                self.after(0, show_success)
+
+            except Exception as e:
+                self.after(0, lambda: self.db_status.configure(
+                    text=f"❌ Fehler beim Neuaufbau: {e}",
+                    text_color="red"
+                ))
+
+        thread = threading.Thread(target=rebuild_thread)
+        thread.daemon = True
+        thread.start()
+
+    def clear_database(self):
+        """Löscht die Datenbank komplett (mit automatischem Backup)."""
+        # Erste Bestätigung
+        result = messagebox.askyesno(
+            "Datenbank löschen",
+            "⚠️ WARNUNG ⚠️\n\n"
+            "Möchten Sie die Datenbank wirklich komplett löschen?\n\n"
+            "Ein automatisches Backup wird vor dem Löschen erstellt.\n"
+            "Alle Index-Informationen gehen verloren.",
+            icon="warning"
+        )
+
+        if not result:
+            return
+
+        # Zweite Bestätigung
+        result2 = messagebox.askyesno(
+            "Sind Sie sicher?",
+            "Letzte Warnung!\n\n"
+            "Die Datenbank wird unwiderruflich gelöscht.\n\n"
+            "Sind Sie absolut sicher?",
+            icon="warning"
+        )
+
+        if not result2:
+            return
+
+        # Dritte Bestätigung mit Tipp-Abfrage
+        result3 = messagebox.askyesno(
+            "Finale Bestätigung",
+            "Dies ist Ihre letzte Chance!\n\n"
+            "Ein Backup wird automatisch erstellt, bevor die Datenbank gelöscht wird.\n\n"
+            "Fortfahren?",
+            icon="warning"
+        )
+
+        if not result3:
+            return
+
+        try:
+            db_path = "werkstatt_index.db"
+            if not os.path.exists(db_path):
+                self.db_status.configure(
+                    text="ℹ️ Keine Datenbank zum Löschen gefunden",
+                    text_color="orange"
+                )
+                return
+
+            # Status aktualisieren
+            self.db_status.configure(
+                text="💾 Erstelle automatisches Backup...",
+                text_color="blue"
+            )
+            self.update()
+
+            # Automatisches Backup erstellen
+            from services.backup_manager import BackupManager
+            from datetime import datetime
+
+            backup_manager = BackupManager(self.config)
+            backup_name = f"AUTO_VOR_DB_LOESCHEN_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            success, backup_path, message = backup_manager.create_backup(backup_name)
+
+            if not success:
+                error_msg = f"Backup fehlgeschlagen!\n\n{message}\n\nLöschvorgang abgebrochen."
+                self.db_status.configure(
+                    text="❌ Backup fehlgeschlagen - Abbruch",
+                    text_color="red"
+                )
+                messagebox.showerror("Backup fehlgeschlagen", error_msg)
+                return
+
+            # Backup erfolgreich - zeige Info
+            messagebox.showinfo(
+                "Backup erstellt",
+                f"✓ Backup erfolgreich erstellt:\n\n{backup_path}\n\n"
+                "Die Datenbank wird jetzt gelöscht."
+            )
+
+            # Datenbank löschen
+            self.db_status.configure(
+                text="🗑️ Lösche Datenbank...",
+                text_color="orange"
+            )
+            self.update()
+
+            os.remove(db_path)
+
+            # Neuen Index erstellen (leere Datenbank)
+            from services.indexer import DocumentIndex
+            self.document_index = DocumentIndex(db_path)
+
+            self.db_status.configure(
+                text=f"✓ Datenbank gelöscht (Backup: {os.path.basename(backup_path)})",
+                text_color="green"
+            )
+            self.update_db_stats()
+
+            messagebox.showinfo(
+                "Datenbank gelöscht",
+                f"✓ Datenbank wurde erfolgreich gelöscht!\n\n"
+                f"Backup gespeichert unter:\n{backup_path}"
+            )
+
+        except Exception as e:
+            self.db_status.configure(
+                text=f"❌ Fehler: {e}",
+                text_color="red"
+            )
+            messagebox.showerror("Fehler", f"Fehler beim Löschen:\n\n{e}")
+
     def on_closing(self):
         """Wird beim Schließen des Fensters aufgerufen."""
         # Watchdog stoppen falls aktiv
         if hasattr(self, 'watchdog_service') and self.watchdog_service and self.watchdog_service.is_watching:
             print("Stoppe Watchdog...")
             self.watchdog_service.stop()
-        
+
         # Fenster schließen
         self.destroy()
 

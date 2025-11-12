@@ -104,26 +104,59 @@ def get_pattern(name: str) -> str:
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extrahiert Text aus einer PDF-Datei.
-    
+    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei.
+
+    WICHTIG: Es wird nur die erste Seite analysiert, da die relevanten
+    Informationen (Kundennummer, Auftragsnummer, etc.) dort stehen.
+    Die komplette PDF-Datei wird aber trotzdem verschoben/kopiert.
+
     Args:
         file_path: Pfad zur PDF-Datei
-        
+
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
     if not PYMUPDF_AVAILABLE or fitz is None:
         return ""
-    
+
     try:
         text = ""
         with fitz.open(file_path) as doc:  # type: ignore
-            for page in doc:
-                text += page.get_text()
+            page_count = len(doc)
+
+            # Nur die erste Seite analysieren
+            if page_count > 0:
+                text = doc[0].get_text()
+
+            # Info ausgeben, wenn mehrseitig
+            if page_count > 1:
+                print(f"ℹ️  PDF hat {page_count} Seiten - Analysiere nur Seite 1")
+
         return text
     except Exception as e:
         print(f"Fehler beim PDF-Text-Extrahieren: {e}")
         return ""
+
+
+def get_pdf_page_count(file_path: str) -> int:
+    """
+    Ermittelt die Anzahl der Seiten einer PDF-Datei.
+
+    Args:
+        file_path: Pfad zur PDF-Datei
+
+    Returns:
+        Anzahl der Seiten oder 0 bei Fehler
+    """
+    if not PYMUPDF_AVAILABLE or fitz is None:
+        return 0
+
+    try:
+        with fitz.open(file_path) as doc:  # type: ignore
+            return len(doc)
+    except Exception as e:
+        print(f"Fehler beim Ermitteln der Seitenanzahl: {e}")
+        return 0
 
 
 def extract_text_from_image_ocr(file_path: str, tesseract_path: Optional[str] = None) -> str:
@@ -154,30 +187,34 @@ def extract_text_from_image_ocr(file_path: str, tesseract_path: Optional[str] = 
 
 def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = None) -> str:
     """
-    Extrahiert Text aus einer PDF-Datei mittels OCR (für gescannte PDFs).
-    
+    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei mittels OCR (für gescannte PDFs).
+
+    WICHTIG: Es wird nur die erste Seite analysiert, da die relevanten
+    Informationen (Kundennummer, Auftragsnummer, etc.) dort stehen.
+    Die komplette PDF-Datei wird aber trotzdem verschoben/kopiert.
+
     Args:
         file_path: Pfad zur PDF-Datei
         tesseract_path: Optionaler Pfad zur Tesseract-Installation
-        
+
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
     if not OCR_AVAILABLE or pytesseract is None or convert_from_path is None:
         return ""
-    
+
     try:
         if tesseract_path:
             pytesseract.pytesseract.tesseract_cmd = tesseract_path  # type: ignore
-        
-        # Konvertiere PDF zu Bildern
-        images = convert_from_path(file_path)  # type: ignore
+
+        # Konvertiere PDF zu Bildern (nur erste Seite)
+        images = convert_from_path(file_path, first_page=1, last_page=1)  # type: ignore
         text = ""
-        
-        for image in images:
-            text += pytesseract.image_to_string(image, lang="deu")  # type: ignore
-            text += "\n"
-        
+
+        if len(images) > 0:
+            text = pytesseract.image_to_string(images[0], lang="deu")  # type: ignore
+            print(f"ℹ️  PDF-OCR: Analysiere nur Seite 1")
+
         return text
     except Exception as e:
         print(f"Fehler beim PDF-OCR: {e}")
@@ -386,7 +423,12 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
     """
     # Text extrahieren
     text = extract_text(file_path, tesseract_path)
-    
+
+    # Seitenanzahl ermitteln (nur für PDFs)
+    page_count = 0
+    if file_path.lower().endswith('.pdf'):
+        page_count = get_pdf_page_count(file_path)
+
     # Metadaten extrahieren mit Vorlage (wenn vorhanden)
     if vorlagen_manager:
         vorlage_result = vorlagen_manager.analyze_with_vorlage(text, vorlage_name)
@@ -459,6 +501,7 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
         "vorlage_verwendet": vorlage_verwendet,
         "is_legacy": is_legacy,
         "legacy_match_reason": legacy_match_reason,
+        "page_count": page_count,  # NEU: Seitenanzahl (nur PDFs, sonst 0)
     }
     
     return result

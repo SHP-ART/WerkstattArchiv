@@ -441,18 +441,77 @@ class DocumentIndex:
         """Gibt alle eindeutigen Jahre zurück."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT DISTINCT jahr 
-            FROM dokumente 
+            SELECT DISTINCT jahr
+            FROM dokumente
             WHERE jahr IS NOT NULL
             ORDER BY jahr DESC
         """)
-        
+
         years = [row[0] for row in cursor.fetchall()]
         conn.close()
-        
+
         return years
+
+    def check_duplicate(self, auftrag_nr: str, dokument_typ: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Prüft, ob ein Dokument mit der gleichen Auftragsnummer bereits existiert.
+
+        Args:
+            auftrag_nr: Auftragsnummer zum Prüfen
+            dokument_typ: Optional - Dokumenttyp (wenn angegeben, wird auch der Typ geprüft)
+
+        Returns:
+            Dictionary mit Informationen zum existierenden Dokument oder None wenn kein Duplikat
+        """
+        print(f"🔍 DEBUG check_duplicate: auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}")
+
+        if not auftrag_nr:
+            print("   → Keine Auftragsnummer, überspringe Prüfung")
+            return None
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        if dokument_typ:
+            # Prüfe auf Auftragsnummer UND Dokumenttyp
+            print(f"   → Prüfe auf Auftrag {auftrag_nr} + Typ {dokument_typ}")
+            cursor.execute("""
+                SELECT * FROM dokumente
+                WHERE auftrag_nr = ? AND dokument_typ = ?
+                ORDER BY verarbeitet_am DESC
+                LIMIT 1
+            """, (auftrag_nr, dokument_typ))
+        else:
+            # Prüfe nur auf Auftragsnummer
+            print(f"   → Prüfe auf Auftrag {auftrag_nr} (ohne Typ)")
+            cursor.execute("""
+                SELECT * FROM dokumente
+                WHERE auftrag_nr = ?
+                ORDER BY verarbeitet_am DESC
+                LIMIT 1
+            """, (auftrag_nr,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            print(f"   ✓ DUPLIKAT GEFUNDEN: {row['dateiname']}")
+            return {
+                "dateiname": row["dateiname"],
+                "ziel_pfad": row["ziel_pfad"],
+                "auftrag_nr": row["auftrag_nr"],
+                "dokument_typ": row["dokument_typ"],
+                "kunden_nr": row["kunden_nr"],
+                "kunden_name": row["kunden_name"],
+                "jahr": row["jahr"],
+                "verarbeitet_am": row["verarbeitet_am"],
+            }
+
+        print(f"   → Kein Duplikat gefunden")
+        return None
     
     def search_by_fin(self, fin: str) -> List[Dict[str, Any]]:
         """

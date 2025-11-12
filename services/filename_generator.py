@@ -6,20 +6,22 @@ from typing import Dict, Any, Optional
 import re
 
 
-def generate_filename(analysis_result: Dict[str, Any], 
+def generate_filename(analysis_result: Dict[str, Any],
                      timestamp: Optional[str] = None) -> str:
     """
     Generiert Dateinamen nach Schema:
-    [Auftragsnummer]_[Dokumenttyp]_[Datum]_[FIN oder Kennzeichen]_[KundeKurz]_[Zeitstempel].pdf
-    
+    [Auftragsnummer]_[Dokumenttyp]_S[Seitenanzahl]_[Datum]_[FIN oder Kennzeichen]_[KundeKurz]_[Zeitstempel].pdf
+
+    NEU: Seitenanzahl wird jetzt inkludiert!
+
     Beispiele:
-    - 78708_Auftrag_20251111_VR7BCZKXCME033281_Schultze_20251111_143022.pdf
-    - 11_Auftrag_20251007_SFB-KI-23E_Schultze_20251111_143022.pdf
-    
+    - 78708_Auftrag_S3_20251111_VR7BCZKXCME033281_Schultze_20251111_143022.pdf
+    - 11_Auftrag_S1_20251007_SFB-KI-23E_Schultze_20251111_143022.pdf
+
     Args:
         analysis_result: Dictionary mit extrahierten Daten
         timestamp: Optionaler Zeitstempel (default: aktuell)
-        
+
     Returns:
         Generierter Dateiname
     """
@@ -32,7 +34,14 @@ def generate_filename(analysis_result: Dict[str, Any],
     
     # 2. Dokumenttyp (Auftrag, Rechnung, KVA, etc.)
     dokument_typ = analysis_result.get("dokument_typ", "Dokument")
-    
+
+    # 2.5 NEU: Seitenanzahl (nur für PDFs, sonst 1 für Bilder)
+    page_count = analysis_result.get("page_count", 1)
+    # Für Bilder ohne Seitenanzahl nehmen wir 1 an
+    if page_count == 0:
+        page_count = 1
+    seiten_str = f"S{page_count}"
+
     # 3. Datum (YYYYMMDD aus Jahr, ansonsten aus Zeitstempel)
     jahr = analysis_result.get("jahr")
     if jahr:
@@ -67,13 +76,13 @@ def generate_filename(analysis_result: Dict[str, Any],
     
     # 6. Zeitstempel
     zeitstempel = timestamp.replace("-", "").replace(":", "").replace(" ", "_")
-    
-    # Dateiname zusammensetzen
-    filename = f"{auftrag_nr}_{dokument_typ}_{datum_str}_{fahrzeug_id}_{kunde_kurz}_{zeitstempel}.pdf"
-    
+
+    # Dateiname zusammensetzen (NEU: mit Seitenanzahl)
+    filename = f"{auftrag_nr}_{dokument_typ}_{seiten_str}_{datum_str}_{fahrzeug_id}_{kunde_kurz}_{zeitstempel}.pdf"
+
     # Sicherheit: Bereinige problematische Zeichen
     filename = filename.replace("/", "-").replace("\\", "-")
-    
+
     return filename
 
 
