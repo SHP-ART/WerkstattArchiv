@@ -148,7 +148,6 @@ class MainWindow(ctk.CTk):
     
     def update_loading_progress(self, progress: float, status: str, detail: str = ""):
         """Aktualisiert den Ladefortschritt mit Animation."""
-        import time
         self.loading_progress.set(progress)
         self.loading_status.configure(text=status)
         if detail:
