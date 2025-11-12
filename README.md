@@ -1,6 +1,6 @@
 # WerkstattArchiv
 
-**Version 0.8.0**
+**Version 0.8.5**
 
 Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokumenten.
 
@@ -10,14 +10,17 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 - ✅ OCR-Unterstützung mit Tesseract
 - ✅ Intelligente Ordnerstruktur nach Kunde/Jahr/Auftrag
 - ✅ Moderne GUI mit customtkinter
-- ✅ **Dokumenten-Indexierung & Suche** (neu!)
-- ✅ **Statistiken & Auswertungen** (neu!)
-- ✅ **Legacy-Auftrags-System** - Automatische Zuordnung alter Aufträge ohne Kundennummer (neu!)
-- ✅ **Automatische Ordnerüberwachung** - Neue Dokumente werden automatisch verarbeitet (neu!)
-- ✅ **Konfigurierbare Regex-Patterns** - Anpassbare Suchmuster über GUI (neu!)
-- ✅ **Automatische Kundenverwaltung** - Kunden werden automatisch aus Dokumenten hinzugefügt (neu!)
-- ✅ **Backup & Restore** - Sichere alle Daten mit einem Klick (neu!)
-- ✅ **Auto-Update-System** - Updates direkt aus GitHub installieren (neu!)
+- ✅ **Dokumenten-Indexierung & Suche**
+- ✅ **Statistiken & Auswertungen**
+- ✅ **Legacy-Auftrags-System** - Automatische Zuordnung alter Aufträge ohne Kundennummer
+- ✅ **Virtuelle Kundennummern** - Automatische VKxxxx für Dokumente ohne erkannte Kundennummer (neu in 0.8.5!)
+- ✅ **Datenbank-Management** - Löschen und neu initialisieren der Index-Datenbank (neu in 0.8.5!)
+- ✅ **Automatische Ordnerüberwachung** - Neue Dokumente werden automatisch verarbeitet
+- ✅ **Konfigurierbare Regex-Patterns** - Anpassbare Suchmuster über GUI
+- ✅ **Automatische Kundenverwaltung** - Kunden werden automatisch aus Dokumenten hinzugefügt
+- ✅ **Backup & Restore** - Sichere alle Daten mit einem Klick
+- ✅ **Auto-Update-System** - Updates direkt aus GitHub installieren
+- ✅ **Optimierter Ladeprozess** - Schneller Start mit sichtbarem Status (neu in 0.8.5!)
 - ✅ Manuelle Nachbearbeitung unklarer Dokumente
 - ✅ Vollständig lokal (keine Cloud-Services)
 - ✅ Ausführliches Logging aller Vorgänge
@@ -31,23 +34,24 @@ WerkstattArchiv/
 ├── requirements.txt              # Python-Abhängigkeiten
 ├── werkstatt_index.db           # SQLite-Datenbank (auto-erstellt)
 ├── ui/
-│   └── main_window.py           # GUI-Implementation (mit Legacy-Tab)
+│   └── main_window.py           # GUI-Implementation (mit Legacy + Virtuellen Kunden)
 ├── services/
-│   ├── customers.py             # Kundenverwaltung (erweitert für Legacy)
+│   ├── customers.py             # Kundenverwaltung (mit virtuellen Kunden)
 │   ├── analyzer.py              # Dokumentenanalyse (mit Legacy-Support)
-│   ├── router.py                # Routing-Logik (Altbestand/Unklar Pfade)
-│   ├── indexer.py               # Dokumenten-Index + unclear_legacy Tabelle
-│   ├── legacy_resolver.py       # ⭐ NEU: Legacy-Zuordnungs-Logik
-│   ├── vehicles.py              # ⭐ NEU: Fahrzeug-Index-Manager
-│   ├── filename_generator.py   # ⭐ NEU: Standardisierte Dateinamen
-│   ├── watchdog_service.py      # ⭐ NEU: Automatische Ordnerüberwachung
-│   ├── pattern_manager.py       # ⭐ NEU: Konfigurierbare Regex-Patterns
-│   ├── backup_manager.py        # ⭐ NEU: Backup & Restore System
+│   ├── router.py                # Routing-Logik (mit virtueller Kundennummer-Erstellung)
+│   ├── indexer.py               # Dokumenten-Index + unclear_legacy Tabelle + DB-Management
+│   ├── legacy_resolver.py       # Legacy-Zuordnungs-Logik
+│   ├── virtual_customer_manager.py  # ⭐ NEU: Virtuelle Kunden & Datei-Umbenennung
+│   ├── vehicles.py              # Fahrzeug-Index-Manager
+│   ├── filename_generator.py   # Standardisierte Dateinamen
+│   ├── watchdog_service.py      # Automatische Ordnerüberwachung
+│   ├── pattern_manager.py       # Konfigurierbare Regex-Patterns
+│   ├── backup_manager.py        # Backup & Restore System
 │   ├── vorlagen.py              # Vorlagen-Manager
 │   └── logger.py                # Logging-Service
 ├── data/
-│   └── vehicles.csv             # ⭐ NEU: Fahrzeug-Kundenzuordnung (auto-erstellt)
-├── backups/                     # ⭐ NEU: Backup-Verzeichnis (auto-erstellt)
+│   └── vehicles.csv             # Fahrzeug-Kundenzuordnung (auto-erstellt)
+├── backups/                     # Backup-Verzeichnis (auto-erstellt)
 └── beispiel_auftraege/          # Test-PDFs (nicht im Git)
     ├── auftrag.pdf              # Legacy ohne Kundennr (alte Vorlage)
     └── Schultze.pdf             # Modern mit Kundennr (neue Vorlage)
@@ -165,9 +169,44 @@ python main.py
 
 1. **Einstellungen-Tab**: Pfade konfigurieren und Kundendatenbank laden
 2. **Verarbeitung-Tab**: "Eingangsordner scannen" klicken ODER "🔍 Auto-Watch starten" für automatische Überwachung
-3. **Suche-Tab**: Nach verarbeiteten Dokumenten suchen (neu!)
+3. **Suche-Tab**: Nach verarbeiteten Dokumenten suchen
 4. **Unklare Dokumente-Tab**: Manuelle Nachbearbeitung bei Bedarf
-5. **Unklare Legacy-Aufträge-Tab**: Manuelle Zuordnung alter Aufträge ohne Kundennummer (neu!)
+5. **Unklare Legacy-Aufträge-Tab**: Manuelle Zuordnung alter Aufträge ohne Kundennummer
+6. **Virtuelle Kunden-Tab**: Zuordnung virtueller Kundennummern zu echten Kunden (neu in 0.8.5!)
+
+---
+
+## 🆕 Changelog
+
+### Version 0.8.5 (12. November 2025)
+
+**Neue Features:**
+- ✨ **Virtuelle Kundennummern (VKxxxx)**: Dokumente ohne erkannte Kundennummer bekommen automatisch eine virtuelle Nummer
+- 🔄 **Automatische Datei-Umbenennung**: Beim Zuordnen virtueller Kunden zu echten werden alle Dateien automatisch umbenannt
+- 👥 **Neuer Tab "Virtuelle Kunden"**: Verwalte und ordne virtuelle Kundennummern echten Kunden zu
+- 🗄️ **Datenbank-Management**: Löschen und neu initialisieren der Index-Datenbank im System-Tab
+
+**Verbesserungen:**
+- ⚡ **Optimierter Ladeprozess**: Sichtbarer Status mit Icons, schnellerer Start (~1-1.5s)
+- 🔘 **Scan-Button Fix**: Reagiert jetzt sofort beim ersten Klick (vorher verzögert)
+- 📁 **Setup-Scripts korrigiert**: `kunden.csv` wird jetzt leer mit korrektem Semikolon-Format erstellt
+- 🎯 **Synchrones Laden**: Alle Daten vollständig geladen bevor GUI freigegeben wird
+
+**Technische Änderungen:**
+- Neue Datei: `services/virtual_customer_manager.py` für Datei-Umbenennung
+- `CustomerManager`: Neue Methoden `create_virtual_customer()`, `is_virtual_customer()`, `replace_virtual_customer()`
+- `Router`: Automatische Erstellung virtueller Kundennummern bei fehlender Erkennung
+- Loading-Screen: 9 Steps mit je 100ms + detaillierte Status-Updates
+
+### Version 0.8.0 (Vorherige Version)
+
+**Features:**
+- Dokumenten-Indexierung & Suche
+- Legacy-Auftrags-System
+- Automatische Ordnerüberwachung
+- Konfigurierbare Regex-Patterns
+- Backup & Restore System
+- Auto-Update-System
 
 ---
 
@@ -548,7 +587,70 @@ kunden_nr;name;plz;ort;strasse;telefon
 
 ---
 
-## 💾 Backup & Wiederherstellung
+## � Virtuelle Kundennummern (Neu in 0.8.5!)
+
+Das WerkstattArchiv erstellt automatisch **virtuelle Kundennummern** für Dokumente, bei denen keine Kundennummer erkannt werden kann.
+
+### Wie funktioniert es?
+
+#### 1. **Automatische Erstellung**
+
+Wenn bei der Verarbeitung keine Kundennummer erkannt wird:
+- System erstellt automatisch eine virtuelle Kundennummer: **VK0001**, **VK0002**, etc.
+- Dokument wird normal archiviert unter der virtuellen Nummer
+- Kunde wird in `kunden.csv` gespeichert
+- Alle Funktionen (Suche, Indexierung) funktionieren normal
+
+**Beispiel-Ordnerstruktur:**
+```
+[ROOT]/Kunde/VK0001 - Unbekannter Kunde/2025/12345_Rechnung_20251112.pdf
+```
+
+#### 2. **Manuelle Zuordnung im "Virtuelle Kunden" Tab**
+
+Im neuen Tab **"Virtuelle Kunden"** siehst du:
+- Alle virtuellen Kundennummern (VKxxxx)
+- Name des Kunden (wenn erkannt)
+- Anzahl der zugehörigen Dateien
+- Eingabefelder für echte Kundennummer + Name
+
+**Workflow:**
+1. Öffne Tab **"Virtuelle Kunden"**
+2. Gib die echte Kundennummer und den Namen ein
+3. Klicke auf **"→ Zuordnen"**
+4. System fragt nach Bestätigung
+5. **Alle Dateien werden automatisch umbenannt!**
+
+#### 3. **Automatisches Umbenennen aller Dateien**
+
+Wenn du VK0001 → 28307 (Max Müller) zuordnest:
+- **Vorher:**
+  ```
+  [ROOT]/Kunde/VK0001 - Unbekannter Kunde/2025/12345_Rechnung_20251112.pdf
+  ```
+- **Nachher:**
+  ```
+  [ROOT]/Kunde/28307 - Max Müller/2025/12345_Rechnung_20251112.pdf
+  ```
+
+**Was passiert automatisch:**
+- ✅ Alle Dateien mit VK0001 werden gefunden
+- ✅ Kundennummer im Dateinamen wird ersetzt
+- ✅ Kundenname im Dateinamen wird ersetzt
+- ✅ Ordner werden umbenannt
+- ✅ Kundendatenbank wird aktualisiert
+- ✅ VK0001 wird gelöscht, 28307 wird hinzugefügt
+
+### Vorteile
+
+- ✅ **Keine verlorenen Dokumente**: Auch ohne erkannte Kundennummer wird alles archiviert
+- ✅ **Nachträgliche Zuordnung**: Kunden können später korrekt zugeordnet werden
+- ✅ **Automatische Umbenennung**: Alle Dateien werden konsistent aktualisiert
+- ✅ **Vollständige Integration**: Virtuelle Kunden funktionieren wie normale Kunden
+
+---
+
+## �💾 Backup & Wiederherstellung
 
 Das WerkstattArchiv bietet ein **integriertes Backup-System** zum Sichern und Wiederherstellen aller wichtigen Daten.
 
@@ -819,12 +921,14 @@ pip install --upgrade customtkinter
 ## Erweiterungsmöglichkeiten
 
 - [x] ✅ Automatische Ordnerüberwachung mit `watchdog` (implementiert!)
-- [ ] Zusätzliche Dokumenttypen
-- [ ] Export-Funktion für Statistiken (CSV, Excel)
-- [ ] Batch-Verarbeitung mit Progress-Bar
 - [x] ✅ Konfigurierbare Regex-Patterns über GUI (implementiert!)
 - [x] ✅ Legacy-Aufträge ohne Kundennummer (implementiert!)
 - [x] ✅ Fahrzeug-Index für FIN-basierte Zuordnung (implementiert!)
+- [x] ✅ Virtuelle Kundennummern mit automatischer Datei-Umbenennung (implementiert in 0.8.5!)
+- [x] ✅ Datenbank-Management (Löschen/Neu-Initialisieren) (implementiert in 0.8.5!)
+- [ ] Export-Funktion für Statistiken (CSV, Excel)
+- [ ] Batch-Verarbeitung mit Progress-Bar
+- [ ] Zusätzliche Dokumenttypen
 - [ ] Barcode/QR-Code Erkennung auf Dokumenten
 - [ ] Email-Integration für Dokumenteneingang
 
