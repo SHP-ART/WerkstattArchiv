@@ -279,6 +279,7 @@ class MainWindow(ctk.CTk):
     
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
+        self.add_log("INFO", "Erstelle Einstellungen-Tab")
         tab = self.tabview.tab("Einstellungen")
         
         # Frame für Einstellungen
@@ -331,6 +332,8 @@ class MainWindow(ctk.CTk):
         # Status-Label
         self.settings_status = ctk.CTkLabel(settings_frame, text="")
         self.settings_status.pack(pady=5)
+        
+        self.add_log("SUCCESS", f"Einstellungen-Tab erstellt ({len(self.entries)} Felder)")
     
     def create_virtual_customers_tab(self):
         """Erstellt den Tab für virtuelle Kunden-Verwaltung."""
