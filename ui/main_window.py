@@ -21,6 +21,7 @@ from services.indexer import DocumentIndex
 from services.vorlagen import VorlagenManager
 from services.pattern_manager import PatternManager
 from services.virtual_customer_manager import VirtualCustomerManager
+from core.folder_structure_manager import FolderStructureManager
 
 try:
     from services.watchdog_service import WatchdogService
@@ -53,6 +54,9 @@ class MainWindow(ctk.CTk):
         self.virtual_customer_manager = VirtualCustomerManager(
             config.get("root_dir", ""),
             customer_manager
+        )
+        self.folder_structure_manager = FolderStructureManager(
+            config.get("folder_structure", {})
         )
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
@@ -282,12 +286,16 @@ class MainWindow(ctk.CTk):
         self.add_log("INFO", "Erstelle Einstellungen-Tab")
         tab = self.tabview.tab("Einstellungen")
         
-        # Frame für Einstellungen
-        settings_frame = ctk.CTkFrame(tab)
-        settings_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # Scrollable Frame für alle Einstellungen
+        scroll_frame = ctk.CTkScrollableFrame(tab)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # ========== PFAD-EINSTELLUNGEN ==========
+        path_frame = ctk.CTkFrame(scroll_frame)
+        path_frame.pack(fill="x", padx=10, pady=10)
         
         # Überschrift
-        title = ctk.CTkLabel(settings_frame, text="Pfad-Einstellungen", 
+        title = ctk.CTkLabel(path_frame, text="📁 Pfad-Einstellungen", 
                             font=ctk.CTkFont(size=20, weight="bold"))
         title.pack(pady=10)
         
@@ -303,7 +311,7 @@ class MainWindow(ctk.CTk):
         ]
         
         for key, label_text in labels:
-            row_frame = ctk.CTkFrame(settings_frame)
+            row_frame = ctk.CTkFrame(path_frame)
             row_frame.pack(fill="x", padx=20, pady=5)
             
             label = ctk.CTkLabel(row_frame, text=label_text, width=200, anchor="w")
@@ -319,21 +327,219 @@ class MainWindow(ctk.CTk):
                                        command=lambda k=key: self.browse_path(k))
             browse_btn.pack(side="left", padx=5)
         
+        # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
+        self.create_folder_structure_settings(scroll_frame)
+        
+        # ========== AKTIONS-BUTTONS ==========
+        action_frame = ctk.CTkFrame(scroll_frame)
+        action_frame.pack(fill="x", padx=10, pady=20)
+        
         # Speichern-Button
-        save_btn = ctk.CTkButton(settings_frame, text="Einstellungen speichern",
-                                command=self.save_settings)
-        save_btn.pack(pady=20)
+        save_btn = ctk.CTkButton(action_frame, text="💾 Alle Einstellungen speichern",
+                                command=self.save_settings,
+                                font=ctk.CTkFont(size=14, weight="bold"))
+        save_btn.pack(pady=10)
         
         # Kundendatenbank neu laden Button
-        reload_btn = ctk.CTkButton(settings_frame, text="Kundendatenbank neu laden",
+        reload_btn = ctk.CTkButton(action_frame, text="🔄 Kundendatenbank neu laden",
                                   command=self.reload_customers)
         reload_btn.pack(pady=5)
         
         # Status-Label
-        self.settings_status = ctk.CTkLabel(settings_frame, text="")
+        self.settings_status = ctk.CTkLabel(action_frame, text="")
         self.settings_status.pack(pady=5)
         
-        self.add_log("SUCCESS", f"Einstellungen-Tab erstellt ({len(self.entries)} Felder)")
+        self.add_log("SUCCESS", f"Einstellungen-Tab erstellt ({len(self.entries)} Pfad-Felder)")
+    
+    def create_folder_structure_settings(self, parent_frame):
+        """Erstellt die Einstellungen für Ordnerstruktur."""
+        structure_frame = ctk.CTkFrame(parent_frame)
+        structure_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Überschrift
+        title = ctk.CTkLabel(structure_frame, text="📂 Ordnerstruktur-Einstellungen", 
+                            font=ctk.CTkFont(size=20, weight="bold"))
+        title.pack(pady=10)
+        
+        # Info-Text
+        info = ctk.CTkLabel(structure_frame, 
+                           text="Definiere wie Dokumente organisiert werden sollen",
+                           font=ctk.CTkFont(size=12))
+        info.pack(pady=5)
+        
+        # Profil-Auswahl
+        profile_frame = ctk.CTkFrame(structure_frame)
+        profile_frame.pack(fill="x", padx=20, pady=10)
+        
+        profile_label = ctk.CTkLabel(profile_frame, text="Profil:", width=150, anchor="w")
+        profile_label.pack(side="left", padx=5)
+        
+        self.structure_profile_var = ctk.StringVar(value="Standard")
+        profile_dropdown = ctk.CTkComboBox(
+            profile_frame,
+            variable=self.structure_profile_var,
+            values=self.folder_structure_manager.get_profile_list(),
+            command=self.on_profile_changed,
+            width=200
+        )
+        profile_dropdown.pack(side="left", padx=5)
+        
+        # Profil-Beschreibung
+        self.profile_desc = ctk.CTkLabel(profile_frame, text="", 
+                                        font=ctk.CTkFont(size=11, slant="italic"))
+        self.profile_desc.pack(side="left", padx=10, fill="x", expand=True)
+        
+        # Ordner-Template
+        folder_frame = ctk.CTkFrame(structure_frame)
+        folder_frame.pack(fill="x", padx=20, pady=5)
+        
+        folder_label = ctk.CTkLabel(folder_frame, text="Ordner-Template:", width=150, anchor="w")
+        folder_label.pack(side="left", padx=5)
+        
+        self.folder_template_entry = ctk.CTkEntry(folder_frame, width=400)
+        self.folder_template_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.folder_template_entry.insert(0, self.folder_structure_manager.folder_template)
+        self.folder_template_entry.bind("<KeyRelease>", lambda e: self.update_structure_preview())
+        
+        # Dateiname-Template
+        filename_frame = ctk.CTkFrame(structure_frame)
+        filename_frame.pack(fill="x", padx=20, pady=5)
+        
+        filename_label = ctk.CTkLabel(filename_frame, text="Dateiname-Muster:", width=150, anchor="w")
+        filename_label.pack(side="left", padx=5)
+        
+        self.filename_template_entry = ctk.CTkEntry(filename_frame, width=400)
+        self.filename_template_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
+        self.filename_template_entry.bind("<KeyRelease>", lambda e: self.update_structure_preview())
+        
+        # Platzhalter-Info
+        placeholder_frame = ctk.CTkFrame(structure_frame)
+        placeholder_frame.pack(fill="x", padx=20, pady=10)
+        
+        placeholder_title = ctk.CTkLabel(placeholder_frame, text="Verfügbare Platzhalter:", 
+                                        font=ctk.CTkFont(size=12, weight="bold"))
+        placeholder_title.pack(anchor="w", padx=5, pady=5)
+        
+        # Platzhalter in 2 Spalten
+        ph_grid = ctk.CTkFrame(placeholder_frame)
+        ph_grid.pack(fill="x", padx=5)
+        
+        placeholders = list(self.folder_structure_manager.PLACEHOLDERS.items())
+        half = len(placeholders) // 2
+        
+        # Linke Spalte
+        left_col = ctk.CTkFrame(ph_grid)
+        left_col.pack(side="left", fill="both", expand=True, padx=5)
+        for key, desc in placeholders[:half]:
+            ph_label = ctk.CTkLabel(left_col, text=f"• {{{key}}} - {desc}", 
+                                   font=ctk.CTkFont(size=10), anchor="w")
+            ph_label.pack(anchor="w", pady=2)
+        
+        # Rechte Spalte
+        right_col = ctk.CTkFrame(ph_grid)
+        right_col.pack(side="left", fill="both", expand=True, padx=5)
+        for key, desc in placeholders[half:]:
+            ph_label = ctk.CTkLabel(right_col, text=f"• {{{key}}} - {desc}", 
+                                   font=ctk.CTkFont(size=10), anchor="w")
+            ph_label.pack(anchor="w", pady=2)
+        
+        # Optionen
+        options_frame = ctk.CTkFrame(structure_frame)
+        options_frame.pack(fill="x", padx=20, pady=10)
+        
+        opt_title = ctk.CTkLabel(options_frame, text="Optionen:", 
+                                font=ctk.CTkFont(size=12, weight="bold"))
+        opt_title.pack(anchor="w", padx=5, pady=5)
+        
+        self.replace_spaces_var = ctk.BooleanVar(value=self.folder_structure_manager.replace_spaces)
+        replace_check = ctk.CTkCheckBox(options_frame, text="Leerzeichen durch Unterstriche ersetzen",
+                                       variable=self.replace_spaces_var,
+                                       command=self.update_structure_preview)
+        replace_check.pack(anchor="w", padx=20, pady=2)
+        
+        self.remove_invalid_var = ctk.BooleanVar(value=self.folder_structure_manager.remove_invalid_chars)
+        invalid_check = ctk.CTkCheckBox(options_frame, text="Ungültige Zeichen entfernen",
+                                       variable=self.remove_invalid_var,
+                                       command=self.update_structure_preview)
+        invalid_check.pack(anchor="w", padx=20, pady=2)
+        
+        self.use_month_names_var = ctk.BooleanVar(value=self.folder_structure_manager.use_month_names)
+        month_check = ctk.CTkCheckBox(options_frame, text="Monatsnamen statt Nummern (z.B. '11_November')",
+                                     variable=self.use_month_names_var,
+                                     command=self.update_structure_preview)
+        month_check.pack(anchor="w", padx=20, pady=2)
+        
+        # Vorschau
+        preview_frame = ctk.CTkFrame(structure_frame)
+        preview_frame.pack(fill="x", padx=20, pady=10)
+        
+        preview_title = ctk.CTkLabel(preview_frame, text="📋 Vorschau:", 
+                                     font=ctk.CTkFont(size=12, weight="bold"))
+        preview_title.pack(anchor="w", padx=5, pady=5)
+        
+        self.structure_preview = ctk.CTkTextbox(preview_frame, height=80, 
+                                               font=ctk.CTkFont(family="Courier", size=11))
+        self.structure_preview.pack(fill="x", padx=5, pady=5)
+        
+        # Initial-Vorschau
+        self.update_structure_preview()
+        
+        # Profil-Beschreibung initial setzen
+        self.update_profile_description()
+    
+    def on_profile_changed(self, choice):
+        """Wird aufgerufen wenn Profil geändert wird."""
+        profile_name = self.structure_profile_var.get()
+        if self.folder_structure_manager.load_profile(profile_name):
+            # Update GUI-Felder
+            self.folder_template_entry.delete(0, "end")
+            self.folder_template_entry.insert(0, self.folder_structure_manager.folder_template)
+            
+            self.filename_template_entry.delete(0, "end")
+            self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
+            
+            # Update Vorschau
+            self.update_structure_preview()
+            self.update_profile_description()
+            self.add_log("INFO", f"Profil '{profile_name}' geladen")
+    
+    def update_profile_description(self):
+        """Aktualisiert die Profil-Beschreibung."""
+        profile_name = self.structure_profile_var.get()
+        if profile_name in self.folder_structure_manager.PROFILES:
+            desc = self.folder_structure_manager.PROFILES[profile_name]["description"]
+            self.profile_desc.configure(text=desc)
+    
+    def update_structure_preview(self):
+        """Aktualisiert die Struktur-Vorschau."""
+        # Update Manager-Konfiguration
+        self.folder_structure_manager.folder_template = self.folder_template_entry.get()
+        self.folder_structure_manager.filename_template = self.filename_template_entry.get()
+        self.folder_structure_manager.replace_spaces = self.replace_spaces_var.get()
+        self.folder_structure_manager.remove_invalid_chars = self.remove_invalid_var.get()
+        self.folder_structure_manager.use_month_names = self.use_month_names_var.get()
+        
+        # Validiere Templates
+        folder_valid, folder_error = self.folder_structure_manager.validate_template(
+            self.folder_structure_manager.folder_template
+        )
+        filename_valid, filename_error = self.folder_structure_manager.validate_template(
+            self.folder_structure_manager.filename_template
+        )
+        
+        # Generiere Vorschau
+        self.structure_preview.delete("1.0", "end")
+        
+        if not folder_valid:
+            self.structure_preview.insert("end", f"❌ Fehler im Ordner-Template:\n{folder_error}\n\n")
+        elif not filename_valid:
+            self.structure_preview.insert("end", f"❌ Fehler im Dateiname-Template:\n{filename_error}\n\n")
+        else:
+            folder_path, filename = self.folder_structure_manager.preview()
+            self.structure_preview.insert("end", "✅ Beispiel-Pfad:\n\n")
+            self.structure_preview.insert("end", f"{folder_path}/\n")
+            self.structure_preview.insert("end", f"  └─ {filename}\n")
     
     def create_virtual_customers_tab(self):
         """Erstellt den Tab für virtuelle Kunden-Verwaltung."""
@@ -1260,16 +1466,21 @@ class MainWindow(ctk.CTk):
             else:
                 self.config[key] = value
         
+        # Speichere Ordnerstruktur-Einstellungen
+        self.config["folder_structure"] = self.folder_structure_manager.get_config()
+        
         try:
             with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
             
-            self.settings_status.configure(text="✓ Einstellungen gespeichert", 
+            self.settings_status.configure(text="✓ Alle Einstellungen gespeichert", 
                                           text_color="green")
+            self.add_log("SUCCESS", "Einstellungen gespeichert (inkl. Ordnerstruktur)")
             
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 
                                           text_color="red")
+            self.add_log("ERROR", "Fehler beim Speichern der Einstellungen", str(e))
     
     def reload_customers(self):
         """Lädt die Kundendatenbank neu."""
