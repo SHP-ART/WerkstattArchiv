@@ -17,37 +17,47 @@ class FolderStructureManager:
         "Standard": {
             "folder_template": "{kunde}/{jahr}/{typ}",
             "filename_template": "{datum}_{typ}_{auftrag}.pdf",
-            "description": "Klassische Struktur: Kunde → Jahr → Typ"
+            "description": "Klassische Struktur: Kunde → Jahr → Typ | Datei: Datum_Typ_Auftrag"
         },
         "Mit Kundennummer": {
             "folder_template": "{kunden_nr} - {kunde}/{jahr}",
             "filename_template": "{auftrag}_{typ}_{datum}.pdf",
-            "description": "Mit Kundennummer: [Nr] - Name → Jahr (unterstützt virtuelle Nummern VK0001)"
+            "description": "Mit Kundennummer: [Nr] - Name → Jahr | Datei: Auftrag_Typ_Datum (virtuelle VK0001)"
+        },
+        "Mit Kundennummer im Dateinamen": {
+            "folder_template": "{kunde}/{jahr}",
+            "filename_template": "{kunden_nr}_{auftrag}_{typ}_{datum}.pdf",
+            "description": "Kundennummer im Dateinamen: Kunde → Jahr | Datei: [Nr]_Auftrag_Typ_Datum"
         },
         "Chronologisch": {
             "folder_template": "{jahr}/{monat}/{kunde}/{typ}",
             "filename_template": "{datum}_{typ}_{auftrag}.pdf",
-            "description": "Zeitbasiert: Jahr → Monat → Kunde → Typ"
+            "description": "Zeitbasiert: Jahr → Monat → Kunde → Typ | Datei: Datum_Typ_Auftrag"
         },
         "Nach Typ": {
             "folder_template": "{typ}/{jahr}/{kunde}",
-            "filename_template": "{datum}_{auftrag}_{kunde}.pdf",
-            "description": "Typ-fokussiert: Dokumenttyp → Jahr → Kunde"
+            "filename_template": "{datum}_{auftrag}_{kunden_nr}.pdf",
+            "description": "Typ-fokussiert: Dokumenttyp → Jahr → Kunde | Datei: Datum_Auftrag_[Nr]"
         },
         "Nach Auftrag": {
             "folder_template": "{kunde}/{auftrag}",
-            "filename_template": "{datum}_{typ}.pdf",
-            "description": "Auftragsbezogen: Kunde → Auftragsnummer"
+            "filename_template": "{datum}_{typ}_{kunden_nr}.pdf",
+            "description": "Auftragsbezogen: Kunde → Auftragsnr | Datei: Datum_Typ_[Nr]"
         },
         "Kompakt": {
             "folder_template": "{kunde}/{jahr}",
             "filename_template": "{datum}_{typ}_{auftrag}.pdf",
-            "description": "Einfach: Kunde → Jahr (weniger Unterordner)"
+            "description": "Einfach: Kunde → Jahr | Datei: Datum_Typ_Auftrag"
         },
         "Detail": {
             "folder_template": "{kunde}/{jahr}/{monat}/{typ}/{auftrag}",
-            "filename_template": "{datum}_{typ}.pdf",
-            "description": "Detailliert: Maximale Verschachtelung"
+            "filename_template": "{kunden_nr}_{datum}_{typ}.pdf",
+            "description": "Detailliert: Max. Verschachtelung | Datei: [Nr]_Datum_Typ"
+        },
+        "Legacy-Kompatibel": {
+            "folder_template": "Kunde/{kunden_nr} - {kunde}/{jahr}",
+            "filename_template": "{auftrag}_{typ}_{datum}.pdf",
+            "description": "Wie alte Struktur: Kunde/[Nr] - Name/Jahr | Datei: Auftrag_Typ_Datum"
         }
     }
     
