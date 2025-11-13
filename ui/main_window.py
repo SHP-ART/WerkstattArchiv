@@ -329,11 +329,16 @@ class MainWindow(ctk.CTk):
                                        command=lambda k=key: self.browse_path(k))
             browse_btn.pack(side="left", padx=5)
         
+        # GUI-Update für flüssige Darstellung
+        self.update_idletasks()
+        
         # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
         self.create_folder_structure_settings(scroll_frame)
+        self.update_idletasks()
         
         # ========== SCHLAGWORT-EINSTELLUNGEN ==========
         self.create_keyword_settings(scroll_frame)
+        self.update_idletasks()
         
         # ========== AKTIONS-BUTTONS ==========
         action_frame = ctk.CTkFrame(scroll_frame)

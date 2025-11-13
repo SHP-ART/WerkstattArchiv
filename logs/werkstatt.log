@@ -26,3 +26,6 @@
 [2025-11-13 04:51:06] INFO     | Schlagwort-Kategorie 'Reifen' aktiviert
 [2025-11-13 04:51:07] INFO     | Schlagwort-Kategorie 'Reifen' deaktiviert
 [2025-11-13 04:51:09] INFO     | Konfigurationsdatei geöffnet | Detail: config/keywords.json
+[2025-11-13 05:00:51] INFO     | Erstelle Einstellungen-Tab
+[2025-11-13 05:00:51] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-13 05:00:58] INFO     | Log-System gestartet
