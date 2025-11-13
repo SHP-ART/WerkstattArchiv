@@ -23,6 +23,7 @@ class UpdateManager:
     GITHUB_USER = "SHP-ART"
     GITHUB_REPO = "WerkstattArchiv"
     GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
+    GITHUB_COMMITS_URL = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/commits/main"
     
     def __init__(self, current_version: str):
         """
@@ -33,6 +34,7 @@ class UpdateManager:
         """
         self.current_version = current_version
         self.app_dir = Path(__file__).parent.parent.absolute()
+        self.use_commit_check = True  # Prüfe Commits statt Releases
     
     def check_for_updates(self) -> Tuple[bool, Optional[str], Optional[str]]:
         """
@@ -43,6 +45,90 @@ class UpdateManager:
             - update_available: True wenn Update verfügbar
             - latest_version: Neueste Version oder None
             - download_url: Download-URL oder None
+        """
+        if self.use_commit_check:
+            return self._check_commits()
+        else:
+            return self._check_releases()
+    
+    def _check_commits(self) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Prüft ob neue Commits auf main verfügbar sind.
+        
+        Returns:
+            Tuple (update_available, commit_info, download_url)
+        """
+        try:
+            # Hole aktuellen lokalen Commit-Hash
+            local_commit = self._get_local_commit_hash()
+            
+            # Hole neuesten Remote Commit
+            ssl_context = ssl._create_unverified_context()
+            request = urllib.request.Request(
+                self.GITHUB_COMMITS_URL,
+                headers={'User-Agent': 'WerkstattArchiv-Updater'}
+            )
+            
+            with urllib.request.urlopen(request, timeout=10, context=ssl_context) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            
+            remote_commit = data.get('sha', '')[:7]  # Kurze Version
+            commit_message = data.get('commit', {}).get('message', '').split('\n')[0]
+            commit_date = data.get('commit', {}).get('author', {}).get('date', '')
+            
+            if not remote_commit:
+                return False, None, None
+            
+            # Prüfe ob Remote neuer ist
+            update_available = (local_commit != remote_commit) if local_commit else True
+            
+            # Info-String erstellen
+            commit_info = f"{remote_commit} - {commit_message}"
+            
+            # Download-URL für main branch ZIP
+            download_url = f"https://github.com/{self.GITHUB_USER}/{self.GITHUB_REPO}/archive/refs/heads/main.zip"
+            
+            return update_available, commit_info, download_url
+            
+        except Exception as e:
+            print(f"Fehler beim Prüfen auf Updates (Commits): {e}")
+            # Fallback zu Release-Check
+            return self._check_releases()
+    
+    def _get_local_commit_hash(self) -> Optional[str]:
+        """
+        Holt den aktuellen lokalen Git-Commit-Hash.
+        
+        Returns:
+            Commit-Hash (kurz, 7 Zeichen) oder None
+        """
+        try:
+            import subprocess
+            
+            # Versuche git rev-parse HEAD
+            result = subprocess.run(
+                ['git', 'rev-parse', '--short=7', 'HEAD'],
+                cwd=self.app_dir,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                return result.stdout.strip()
+            
+            return None
+            
+        except Exception as e:
+            print(f"Fehler beim Holen des lokalen Commits: {e}")
+            return None
+    
+    def _check_releases(self) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Prüft ob ein neuer Release verfügbar ist (alte Methode).
+        
+        Returns:
+            Tuple (update_available, latest_version, download_url)
         """
         try:
             # SSL-Kontext für macOS erstellen (ignoriert Zertifikatsprüfung)

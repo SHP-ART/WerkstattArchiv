@@ -907,6 +907,26 @@ class MainWindow(ctk.CTk):
         )
         update_info.pack(pady=5)
         
+        # Update-Methode wählen
+        update_method_frame = ctk.CTkFrame(system_frame)
+        update_method_frame.pack(pady=5)
+        
+        update_method_label = ctk.CTkLabel(
+            update_method_frame,
+            text="Update-Prüfung:",
+            font=ctk.CTkFont(size=11)
+        )
+        update_method_label.pack(side="left", padx=5)
+        
+        self.update_use_commits_var = ctk.BooleanVar(value=True)
+        update_commits_check = ctk.CTkCheckBox(
+            update_method_frame,
+            text="Prüfe Commits (empfohlen - erkennt jede Änderung)",
+            variable=self.update_use_commits_var,
+            command=self.on_update_method_changed
+        )
+        update_commits_check.pack(side="left", padx=5)
+        
         update_buttons_frame = ctk.CTkFrame(system_frame)
         update_buttons_frame.pack(pady=10)
         
@@ -3052,6 +3072,12 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Fehler", message)
     
+    def on_update_method_changed(self):
+        """Wird aufgerufen wenn Update-Methode geändert wird."""
+        use_commits = self.update_use_commits_var.get()
+        method = "Commit-Check" if use_commits else "Release-Check"
+        self.add_log("INFO", f"Update-Methode geändert: {method}")
+    
     def check_for_updates(self):
         """Prüft auf neue Versions-Updates von GitHub."""
         from services.updater import UpdateManager
@@ -3062,6 +3088,8 @@ class MainWindow(ctk.CTk):
         # In Thread ausführen um GUI nicht zu blockieren
         def check_thread():
             updater = UpdateManager(self.version)
+            # Setze Update-Methode
+            updater.use_commit_check = self.update_use_commits_var.get()
             update_available, latest_version, download_url = updater.check_for_updates()
             
             # Ergebnis im Haupt-Thread anzeigen
