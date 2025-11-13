@@ -115,7 +115,8 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
             "typ": dokument_typ,
             "auftrag": auftrag_nr or "",
             "kfz": analysis_result.get("kfz", ""),
-            "fin": analysis_result.get("fin", "")
+            "fin": analysis_result.get("fin", ""),
+            "seiten": analysis_result.get("seiten", "")
         }
         
         # Generiere Pfad und Dateiname mit Template-System

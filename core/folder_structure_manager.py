@@ -72,7 +72,8 @@ class FolderStructureManager:
         "typ": "Dokumenttyp (z.B. Rechnung, Angebot)",
         "auftrag": "Auftragsnummer",
         "kfz": "KFZ-Kennzeichen",
-        "fin": "Fahrzeug-Identifikationsnummer"
+        "fin": "Fahrzeug-Identifikationsnummer",
+        "seiten": "Anzahl der Seiten (z.B. 5)"
     }
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, archive_root_dir: Optional[str] = None):
@@ -176,6 +177,7 @@ class FolderStructureManager:
         prepared["auftrag"] = str(data.get("auftrag", ""))
         prepared["kfz"] = str(data.get("kfz", ""))
         prepared["fin"] = str(data.get("fin", ""))
+        prepared["seiten"] = str(data.get("seiten", ""))
         
         return prepared
     

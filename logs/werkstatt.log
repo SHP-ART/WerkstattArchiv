@@ -29,3 +29,9 @@
 [2025-11-13 05:00:51] INFO     | Erstelle Einstellungen-Tab
 [2025-11-13 05:00:51] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
 [2025-11-13 05:00:58] INFO     | Log-System gestartet
+[2025-11-13 05:17:12] INFO     | Erstelle Einstellungen-Tab
+[2025-11-13 05:17:12] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-13 05:17:18] INFO     | Log-System gestartet
+[2025-11-13 05:17:37] INFO     | Profil 'Legacy-Kompatibel' geladen
+[2025-11-13 05:17:44] INFO     | Profil 'Chronologisch' geladen
+[2025-11-13 05:17:52] INFO     | Profil 'Mit Kundennummer im Dateinamen' geladen
