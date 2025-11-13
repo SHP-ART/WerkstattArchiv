@@ -75,14 +75,26 @@ class FolderStructureManager:
         "fin": "Fahrzeug-Identifikationsnummer"
     }
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, archive_root_dir: Optional[str] = None):
         """
         Initialisiert den FolderStructureManager.
         
         Args:
             config: Konfiguration mit Struktur-Einstellungen
+            archive_root_dir: Root-Verzeichnis des Archivs (für archiv-spezifische Config)
         """
         self.config = config or {}
+        self.archive_root_dir = archive_root_dir
+        self.archive_config_file = None
+        
+        # Archiv-spezifische Konfigurationsdatei
+        if archive_root_dir:
+            self.archive_config_file = os.path.join(archive_root_dir, ".werkstattarchiv_structure.json")
+            # Lade Archiv-Konfiguration falls vorhanden
+            archive_config = self.load_archive_config()
+            if archive_config:
+                self.config.update(archive_config)
+        
         self.folder_template = self.config.get("folder_template", "{kunde}/{jahr}/{typ}")
         self.filename_template = self.config.get("filename_template", "{datum}_{typ}_{auftrag}.pdf")
         
@@ -351,3 +363,49 @@ class FolderStructureManager:
             self.max_name_length = config["max_name_length"]
         if "separator" in config:
             self.separator = config["separator"]
+    
+    def load_archive_config(self) -> Optional[Dict[str, Any]]:
+        """
+        Lädt Ordnerstruktur-Konfiguration aus dem Archiv-Verzeichnis.
+        
+        Returns:
+            Dict mit Konfiguration oder None
+        """
+        if not self.archive_config_file or not os.path.exists(self.archive_config_file):
+            return None
+        
+        try:
+            import json
+            with open(self.archive_config_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️  Fehler beim Laden der Archiv-Konfiguration: {e}")
+            return None
+    
+    def save_archive_config(self) -> bool:
+        """
+        Speichert aktuelle Ordnerstruktur-Konfiguration im Archiv-Verzeichnis.
+        
+        Returns:
+            True bei Erfolg, False bei Fehler
+        """
+        if not self.archive_config_file:
+            print("⚠️  Kein Archiv-Verzeichnis gesetzt - kann nicht speichern")
+            return False
+        
+        try:
+            import json
+            
+            # Erstelle Verzeichnis falls nötig
+            os.makedirs(os.path.dirname(self.archive_config_file), exist_ok=True)
+            
+            config = self.get_config()
+            
+            with open(self.archive_config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+            
+            print(f"✅ Archiv-Konfiguration gespeichert: {self.archive_config_file}")
+            return True
+        except Exception as e:
+            print(f"❌ Fehler beim Speichern der Archiv-Konfiguration: {e}")
+            return False

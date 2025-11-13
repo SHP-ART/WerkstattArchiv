@@ -57,7 +57,8 @@ class MainWindow(ctk.CTk):
             customer_manager
         )
         self.folder_structure_manager = FolderStructureManager(
-            config.get("folder_structure", {})
+            config.get("folder_structure", {}),
+            archive_root_dir=config.get("root_dir", "")
         )
         self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
@@ -371,11 +372,22 @@ class MainWindow(ctk.CTk):
                             font=ctk.CTkFont(size=20, weight="bold"))
         title.pack(pady=10)
         
-        # Info-Text
+        # Info-Text mit Hinweis auf Archiv-Config
         info = ctk.CTkLabel(structure_frame, 
                            text="Definiere wie Dokumente organisiert werden sollen",
                            font=ctk.CTkFont(size=12))
         info.pack(pady=5)
+        
+        # Archiv-Config Info
+        archive_config_path = self.folder_structure_manager.archive_config_file
+        if archive_config_path:
+            archive_info = ctk.CTkLabel(
+                structure_frame,
+                text=f"💾 Wird gespeichert im Archiv: {os.path.basename(archive_config_path)}",
+                font=ctk.CTkFont(size=10, slant="italic"),
+                text_color="gray"
+            )
+            archive_info.pack(pady=2)
         
         # Profil-Auswahl
         profile_frame = ctk.CTkFrame(structure_frame)
@@ -1642,12 +1654,27 @@ class MainWindow(ctk.CTk):
         self.config["folder_structure"] = self.folder_structure_manager.get_config()
         
         try:
+            # 1. Speichere Programm-Konfiguration
             with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
             
-            self.settings_status.configure(text="✓ Alle Einstellungen gespeichert", 
-                                          text_color="green")
-            self.add_log("SUCCESS", "Einstellungen gespeichert (inkl. Ordnerstruktur)")
+            # 2. Speichere Archiv-spezifische Konfiguration
+            archive_saved = self.folder_structure_manager.save_archive_config()
+            
+            if archive_saved:
+                self.settings_status.configure(
+                    text="✓ Einstellungen gespeichert (Programm + Archiv)", 
+                    text_color="green"
+                )
+                self.add_log("SUCCESS", "Einstellungen gespeichert", 
+                           f"Programm-Config + Archiv-Config ({self.folder_structure_manager.archive_config_file})")
+            else:
+                self.settings_status.configure(
+                    text="✓ Programm-Einstellungen gespeichert (Archiv-Config fehlgeschlagen)", 
+                    text_color="orange"
+                )
+                self.add_log("WARNING", "Programm-Einstellungen gespeichert", 
+                           "Archiv-Config konnte nicht gespeichert werden")
             
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 

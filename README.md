@@ -1,6 +1,6 @@
 # WerkstattArchiv
 
-**Version 0.8.5**
+**Version 0.8.6**
 
 Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokumenten.
 
@@ -8,19 +8,22 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 
 - ✅ Automatische Dokumenten-Analyse (PDF & Bilder)
 - ✅ OCR-Unterstützung mit Tesseract
-- ✅ Intelligente Ordnerstruktur nach Kunde/Jahr/Auftrag
+- ✅ **Flexible Ordnerstrukturen** - 9 Profile wählbar (Standard, Mit Kundennummer, Chronologisch, etc.)
+- ✅ **Archiv-spezifische Konfiguration** - Jedes Archiv speichert seine eigene Struktur
 - ✅ Moderne GUI mit customtkinter
 - ✅ **Dokumenten-Indexierung & Suche**
 - ✅ **Statistiken & Auswertungen**
 - ✅ **Legacy-Auftrags-System** - Automatische Zuordnung alter Aufträge ohne Kundennummer
-- ✅ **Virtuelle Kundennummern** - Automatische VKxxxx für Dokumente ohne erkannte Kundennummer (neu in 0.8.5!)
-- ✅ **Datenbank-Management** - Löschen und neu initialisieren der Index-Datenbank (neu in 0.8.5!)
+- ✅ **Virtuelle Kundennummern** - Automatische VKxxxx für Dokumente ohne erkannte Kundennummer
+- ✅ **Datenbank-Management** - Löschen und neu initialisieren der Index-Datenbank
 - ✅ **Automatische Ordnerüberwachung** - Neue Dokumente werden automatisch verarbeitet
 - ✅ **Konfigurierbare Regex-Patterns** - Anpassbare Suchmuster über GUI
+- ✅ **Schlagwort-Erkennung** - 10 Kategorien mit 100+ Schlagwörtern
 - ✅ **Automatische Kundenverwaltung** - Kunden werden automatisch aus Dokumenten hinzugefügt
 - ✅ **Backup & Restore** - Sichere alle Daten mit einem Klick
-- ✅ **Auto-Update-System** - Updates direkt aus GitHub installieren
-- ✅ **Optimierter Ladeprozess** - Schneller Start mit sichtbarem Status (neu in 0.8.5!)
+- ✅ **Auto-Update-System** - Updates direkt aus GitHub installieren (Commit-basiert)
+- ✅ **Log-System** - Live-Anzeige aller Events mit Export-Funktion
+- ✅ **Optimierter Ladeprozess** - Schneller Start mit sichtbarem Status
 - ✅ Manuelle Nachbearbeitung unklarer Dokumente
 - ✅ Vollständig lokal (keine Cloud-Services)
 - ✅ Ausführliches Logging aller Vorgänge
@@ -30,25 +33,34 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 ```
 WerkstattArchiv/
 ├── main.py                       # Haupteinstiegspunkt
-├── config.json                   # Konfigurationsdatei
+├── config.json                   # Programm-Konfiguration
 ├── requirements.txt              # Python-Abhängigkeiten
 ├── werkstatt_index.db           # SQLite-Datenbank (auto-erstellt)
 ├── ui/
 │   └── main_window.py           # GUI-Implementation (mit Legacy + Virtuellen Kunden)
+├── core/
+│   ├── folder_structure_manager.py  # ⭐ Flexible Ordnerstrukturen (9 Profile)
+│   └── keyword_detector.py      # ⭐ Schlagwort-Erkennung
 ├── services/
 │   ├── customers.py             # Kundenverwaltung (mit virtuellen Kunden)
 │   ├── analyzer.py              # Dokumentenanalyse (mit Legacy-Support)
-│   ├── router.py                # Routing-Logik (mit virtueller Kundennummer-Erstellung)
+│   ├── router.py                # Routing-Logik (mit Template-System)
 │   ├── indexer.py               # Dokumenten-Index + unclear_legacy Tabelle + DB-Management
 │   ├── legacy_resolver.py       # Legacy-Zuordnungs-Logik
-│   ├── virtual_customer_manager.py  # ⭐ NEU: Virtuelle Kunden & Datei-Umbenennung
+│   ├── virtual_customer_manager.py  # Virtuelle Kunden & Datei-Umbenennung
 │   ├── vehicles.py              # Fahrzeug-Index-Manager
 │   ├── filename_generator.py   # Standardisierte Dateinamen
 │   ├── watchdog_service.py      # Automatische Ordnerüberwachung
 │   ├── pattern_manager.py       # Konfigurierbare Regex-Patterns
 │   ├── backup_manager.py        # Backup & Restore System
+│   ├── updater.py               # ⭐ Auto-Update-System (Commit-basiert)
 │   ├── vorlagen.py              # Vorlagen-Manager
 │   └── logger.py                # Logging-Service
+├── config/
+│   ├── keywords.json            # ⭐ Schlagwort-Kategorien (10 Kategorien)
+│   └── patterns.json            # Regex-Patterns
+├── logs/
+│   └── werkstatt.log            # ⭐ Log-Datei (auto-rotiert)
 ├── data/
 │   └── vehicles.csv             # Fahrzeug-Kundenzuordnung (auto-erstellt)
 ├── backups/                     # Backup-Verzeichnis (auto-erstellt)
@@ -180,6 +192,48 @@ python main.py
 ---
 
 ## 🆕 Changelog
+
+### Version 0.8.6 (13. November 2025)
+
+**Neue Features:**
+- 📂 **Flexible Ordnerstrukturen**: 9 vordefinierte Profile (Standard, Mit Kundennummer, Chronologisch, etc.)
+- 💾 **Archiv-spezifische Konfiguration**: Jedes Archiv speichert eigene Struktur in `.werkstattarchiv_structure.json`
+- 🏷️ **Schlagwort-Erkennung**: 10 Kategorien mit 100+ Schlagwörtern (Fahrzeuge, Reparaturen, Teile, etc.)
+- 📝 **Log-Tab**: Live-Anzeige aller System-Events mit Export-Funktion
+- 🔄 **Commit-basiertes Update-System**: Erkennt jede GitHub-Änderung, nicht nur Releases
+
+**Ordnerstruktur-Profile:**
+1. **Standard**: `{kunde}/{jahr}/{typ}` | Datei: `{datum}_{typ}_{auftrag}.pdf`
+2. **Mit Kundennummer**: `{kunden_nr} - {kunde}/{jahr}` | Datei: `{auftrag}_{typ}_{datum}.pdf`
+3. **Mit Kundennummer im Dateinamen**: `{kunde}/{jahr}` | Datei: `{kunden_nr}_{auftrag}_{typ}_{datum}.pdf`
+4. **Chronologisch**: `{jahr}/{monat}/{kunde}/{typ}` | Datei: `{datum}_{typ}_{auftrag}.pdf`
+5. **Nach Typ**: `{typ}/{jahr}/{kunde}` | Datei: `{datum}_{auftrag}_{kunden_nr}.pdf`
+6. **Nach Auftrag**: `{kunde}/{auftrag}` | Datei: `{datum}_{typ}_{kunden_nr}.pdf`
+7. **Kompakt**: `{kunde}/{jahr}` | Datei: `{datum}_{typ}_{auftrag}.pdf`
+8. **Detail**: `{kunde}/{jahr}/{monat}/{typ}/{auftrag}` | Datei: `{kunden_nr}_{datum}_{typ}.pdf`
+9. **Legacy-Kompatibel**: `Kunde/{kunden_nr} - {kunde}/{jahr}` | Datei: `{auftrag}_{typ}_{datum}.pdf`
+
+**Platzhalter:**
+- `{kunde}` - Kundenname
+- `{kunden_nr}` - Kundennummer (inkl. virtuelle VK0001)
+- `{jahr}` - Jahr (YYYY)
+- `{monat}` - Monat (MM oder Name)
+- `{datum}` - Vollständiges Datum (YYYY-MM-DD)
+- `{typ}` - Dokumenttyp
+- `{auftrag}` - Auftragsnummer
+- `{kfz}` - KFZ-Kennzeichen
+- `{fin}` - Fahrzeug-FIN
+
+**Verbesserungen:**
+- ⚡ **Performance-Optimierung**: Einstellungen-Tab lädt schneller (`update_idletasks()` nach jedem Frame)
+- 📊 **Log-Rotation**: Automatisch bei 10.000 Zeilen (~2MB)
+- 🔍 **Update-Methode wählbar**: Checkbox zum Umschalten zwischen Commit- und Release-Check
+
+**Archiv-Konfiguration:**
+- Wird im Archiv-Verzeichnis gespeichert: `[ROOT]/.werkstattarchiv_structure.json`
+- Jedes Archiv kann eigene Struktur haben
+- Automatisches Laden beim Programmstart
+- Synchronisation zwischen Programm- und Archiv-Config
 
 ### Version 0.8.5 (12. November 2025)
 
