@@ -1,7 +1,6 @@
 {
   "_info": "Schlagwort-Konfiguration für erweiterte Dokumenten-Suche",
   "_hinweis": "Schlagwörter werden case-insensitive gesucht",
-  
   "kategorien": {
     "Fehlercode": {
       "beschreibung": "Fehlercodes und Diagnosecodes",
@@ -23,7 +22,6 @@
       ],
       "aktiv": false
     },
-    
     "Achsvermessung": {
       "beschreibung": "Achsvermessungsprotokolle und Einstellwerte",
       "schlagwoerter": [
@@ -41,7 +39,6 @@
       ],
       "aktiv": false
     },
-    
     "Diagnose": {
       "beschreibung": "Diagnose und Prüfberichte",
       "schlagwoerter": [
@@ -57,7 +54,6 @@
       ],
       "aktiv": false
     },
-    
     "Inspektion": {
       "beschreibung": "Inspektions- und Wartungsarbeiten",
       "schlagwoerter": [
@@ -72,7 +68,6 @@
       ],
       "aktiv": false
     },
-    
     "Reparatur": {
       "beschreibung": "Reparatur- und Instandsetzungsarbeiten",
       "schlagwoerter": [
@@ -89,7 +84,6 @@
       ],
       "aktiv": false
     },
-    
     "TÜV/AU": {
       "beschreibung": "TÜV und Abgasuntersuchung",
       "schlagwoerter": [
@@ -105,7 +99,6 @@
       ],
       "aktiv": false
     },
-    
     "Klimaanlage": {
       "beschreibung": "Klimaanlagen-Service und -Wartung",
       "schlagwoerter": [
@@ -121,7 +114,6 @@
       ],
       "aktiv": false
     },
-    
     "Bremsen": {
       "beschreibung": "Bremsensystem und -wartung",
       "schlagwoerter": [
@@ -138,7 +130,6 @@
       ],
       "aktiv": false
     },
-    
     "Reifen": {
       "beschreibung": "Reifen und Räder",
       "schlagwoerter": [
@@ -155,7 +146,6 @@
       ],
       "aktiv": false
     },
-    
     "Motor": {
       "beschreibung": "Motor und Motorsteuerung",
       "schlagwoerter": [
@@ -173,7 +163,6 @@
       "aktiv": false
     }
   },
-  
   "_anleitung": {
     "aktivierung": "Setze 'aktiv' auf true um Kategorie zu aktivieren",
     "hinzufuegen": "Neue Schlagwörter zur 'schlagwoerter'-Liste hinzufügen",
@@ -181,7 +170,11 @@
     "beispiel": {
       "NeueKategorie": {
         "beschreibung": "Beschreibung der Kategorie",
-        "schlagwoerter": ["wort1", "wort2", "wort3"],
+        "schlagwoerter": [
+          "wort1",
+          "wort2",
+          "wort3"
+        ],
         "aktiv": true
       }
     }

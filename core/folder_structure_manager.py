@@ -19,6 +19,11 @@ class FolderStructureManager:
             "filename_template": "{datum}_{typ}_{auftrag}.pdf",
             "description": "Klassische Struktur: Kunde → Jahr → Typ"
         },
+        "Mit Kundennummer": {
+            "folder_template": "{kunden_nr} - {kunde}/{jahr}",
+            "filename_template": "{auftrag}_{typ}_{datum}.pdf",
+            "description": "Mit Kundennummer: [Nr] - Name → Jahr (unterstützt virtuelle Nummern VK0001)"
+        },
         "Chronologisch": {
             "folder_template": "{jahr}/{monat}/{kunde}/{typ}",
             "filename_template": "{datum}_{typ}_{auftrag}.pdf",
@@ -49,6 +54,7 @@ class FolderStructureManager:
     # Verfügbare Platzhalter mit Beschreibung
     PLACEHOLDERS = {
         "kunde": "Kundenname",
+        "kunden_nr": "Kundennummer (inkl. virtuelle VK0001)",
         "jahr": "Jahr (YYYY)",
         "monat": "Monat (MM oder Name)",
         "tag": "Tag (DD)",
@@ -143,6 +149,7 @@ class FolderStructureManager:
         
         # Andere Felder
         prepared["kunde"] = str(data.get("kunde", "Unbekannt"))
+        prepared["kunden_nr"] = str(data.get("kunden_nr", ""))
         prepared["typ"] = str(data.get("typ", "Dokument"))
         prepared["auftrag"] = str(data.get("auftrag", ""))
         prepared["kfz"] = str(data.get("kfz", ""))

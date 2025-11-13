@@ -5,15 +5,17 @@ Baut Zielpfade auf und verschiebt Dateien in die korrekte Struktur.
 
 import os
 import shutil
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 
 from services.customers import CustomerManager
 from services.filename_generator import generate_filename
+from core.folder_structure_manager import FolderStructureManager
 
 
 def build_target_path(analysis_result: Dict[str, Any], root_dir: str, 
-                     unclear_dir: str, customer_manager: CustomerManager) -> Tuple[str, bool]:
+                     unclear_dir: str, customer_manager: CustomerManager,
+                     folder_structure_manager: Optional[FolderStructureManager] = None) -> Tuple[str, bool]:
     """
     Baut den Zielpfad für ein analysiertes Dokument.
     
@@ -102,14 +104,34 @@ def build_target_path(analysis_result: Dict[str, Any], root_dir: str,
     if jahr is None:
         jahr = datetime.now().year
     
-    # Dateiname mit neuem Schema generieren
-    filename = generate_filename(analysis_result)
-    
-    # Pfad aufbauen: [ROOT]/Kunde/[Kundennummer] - [Kundenname]/[Jahr]/[Dateiname]
-    kunde_ordner = f"{kunden_nr} - {kunden_name}"
-    target_path = os.path.join(root_dir, "Kunde", kunde_ordner, str(jahr), filename)
-    
-    return target_path, True
+    # NEUE LOGIK: FolderStructureManager verwenden wenn verfügbar
+    if folder_structure_manager:
+        # Bereite Daten für Template vor
+        template_data = {
+            "kunde": kunden_name,
+            "kunden_nr": kunden_nr,
+            "jahr": jahr,
+            "datum": analysis_result.get("datum") or datetime.now(),
+            "typ": dokument_typ,
+            "auftrag": auftrag_nr or "",
+            "kfz": analysis_result.get("kfz", ""),
+            "fin": analysis_result.get("fin", "")
+        }
+        
+        # Generiere Pfad und Dateiname mit Template-System
+        folder_path, filename = folder_structure_manager.generate_path(template_data)
+        target_path = os.path.join(root_dir, folder_path, filename)
+        return target_path, True
+    else:
+        # ALTE LOGIK (Fallback): Fest codierte Struktur
+        # Dateiname mit neuem Schema generieren
+        filename = generate_filename(analysis_result)
+        
+        # Pfad aufbauen: [ROOT]/Kunde/[Kundennummer] - [Kundenname]/[Jahr]/[Dateiname]
+        kunde_ordner = f"{kunden_nr} - {kunden_name}"
+        target_path = os.path.join(root_dir, "Kunde", kunde_ordner, str(jahr), filename)
+        
+        return target_path, True
 
 
 def ensure_unique_filename(target_path: str) -> str:
@@ -164,7 +186,8 @@ def move_file(source_path: str, target_path: str) -> None:
 
 def process_document(file_path: str, analysis_result: Dict[str, Any], 
                     root_dir: str, unclear_dir: str, 
-                    customer_manager: CustomerManager) -> Tuple[str, bool, str]:
+                    customer_manager: CustomerManager,
+                    folder_structure_manager: Optional[FolderStructureManager] = None) -> Tuple[str, bool, str]:
     """
     Verarbeitet ein Dokument: baut Zielpfad und verschiebt die Datei.
     
@@ -212,7 +235,7 @@ def process_document(file_path: str, analysis_result: Dict[str, Any],
     
     # Zielpfad bestimmen
     target_path, is_clear = build_target_path(
-        analysis_result, root_dir, unclear_dir, customer_manager
+        analysis_result, root_dir, unclear_dir, customer_manager, folder_structure_manager
     )
     
     # Grund für Unklar-Einstufung ermitteln

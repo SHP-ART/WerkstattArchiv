@@ -20,3 +20,9 @@
 [2025-11-12 20:15:45] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
 [2025-11-12 20:15:52] INFO     | Log-System gestartet
 [2025-11-12 20:16:25] INFO     | Anwendung wird beendet
+[2025-11-13 04:50:30] INFO     | Erstelle Einstellungen-Tab
+[2025-11-13 04:50:30] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-13 04:50:37] INFO     | Log-System gestartet
+[2025-11-13 04:51:06] INFO     | Schlagwort-Kategorie 'Reifen' aktiviert
+[2025-11-13 04:51:07] INFO     | Schlagwort-Kategorie 'Reifen' deaktiviert
+[2025-11-13 04:51:09] INFO     | Konfigurationsdatei geöffnet | Detail: config/keywords.json

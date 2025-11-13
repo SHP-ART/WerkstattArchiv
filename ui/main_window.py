@@ -1965,7 +1965,7 @@ class MainWindow(ctk.CTk):
 
                 # Dokument verarbeiten und verschieben
                 target_path, is_clear, reason = process_document(
-                    file_path, analysis, root_dir, unclear_dir, self.customer_manager
+                    file_path, analysis, root_dir, unclear_dir, self.customer_manager, self.folder_structure_manager
                 )
 
                 # Fortschritt: 90% - Dokument verschoben
