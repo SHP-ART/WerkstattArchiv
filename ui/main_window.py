@@ -64,6 +64,7 @@ class MainWindow(ctk.CTk):
         self.config_backup_manager = ConfigBackupManager()
         self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
+        self.continuous_scan_service = None  # Continuous Scan Service
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
         self.is_scanning = False  # Flag um Doppel-Scans zu verhindern
 
@@ -1303,8 +1304,8 @@ class MainWindow(ctk.CTk):
         
         # Watchdog Controls (wenn verfügbar)
         if WATCHDOG_AVAILABLE:
-            self.watch_btn = ctk.CTkButton(control_frame, text="🔍 Auto-Watch starten",
-                                          command=self.toggle_watchdog,
+            self.watch_btn = ctk.CTkButton(control_frame, text="� Continuous Scan starten",
+                                          command=self.toggle_continuous_scan,
                                           fg_color="green")
             self.watch_btn.pack(side="left", padx=10, pady=10)
             
@@ -3192,9 +3193,90 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Fehler", "Konnte Überwachung nicht stoppen!")
     
+    def toggle_continuous_scan(self):
+        """Toggle für Continuous Scan Modus."""
+        if not WATCHDOG_AVAILABLE:
+            messagebox.showerror("Fehler", 
+                               "watchdog nicht installiert!\n\n"
+                               "Installation mit: pip install watchdog")
+            return
+        
+        if self.continuous_scan_service and self.continuous_scan_service.is_running:
+            # Stoppen
+            self.stop_continuous_scan()
+        else:
+            # Starten
+            self.start_continuous_scan()
+    
+    def start_continuous_scan(self):
+        """Startet den kontinuierlichen Scan-Modus."""
+        input_dir = self.config.get("input_dir")
+        
+        if not input_dir or not os.path.exists(input_dir):
+            messagebox.showerror("Fehler", 
+                               "Eingangsordner nicht gefunden!\n"
+                               "Bitte Einstellungen prüfen.")
+            return
+        
+        try:
+            # Continuous Scan Service erstellen
+            from services.continuous_scan import ContinuousScanService
+            self.continuous_scan_service = ContinuousScanService(
+                watch_directory=input_dir,
+                callback=self.process_single_document,
+                scan_interval=5.0  # Alle 5 Sekunden scannen
+            )
+            
+            # Starten
+            if self.continuous_scan_service.start():
+                self.watch_btn.configure(text="⏹ Continuous Scan stoppen", fg_color="red")
+                self.watch_status.configure(text="🔄 Aktiv", text_color="green")
+                self.process_status.configure(text=f"Scanne alle 5s: {input_dir}")
+                
+                self.add_log("INFO", f"Continuous Scan gestartet - Ordner: {input_dir}")
+                
+                messagebox.showinfo("Continuous Scan", 
+                                  f"Kontinuierlicher Scan gestartet!\n\n"
+                                  f"Ordner: {input_dir}\n"
+                                  f"Scan-Intervall: 5 Sekunden\n\n"
+                                  f"Workflow:\n"
+                                  f"1. Scanne Ordner\n"
+                                  f"2. Verarbeite jede Datei einzeln\n"
+                                  f"3. Warte 5 Sekunden\n"
+                                  f"4. Wiederhole")
+            else:
+                messagebox.showerror("Fehler", "Konnte Scan nicht starten!")
+                
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+    
+    def stop_continuous_scan(self):
+        """Stoppt den kontinuierlichen Scan-Modus."""
+        if self.continuous_scan_service:
+            if self.continuous_scan_service.stop():
+                status = self.continuous_scan_service.get_status()
+                
+                self.watch_btn.configure(text="🔄 Continuous Scan starten", fg_color="green")
+                self.watch_status.configure(text="⚪ Gestoppt", text_color="gray")
+                self.process_status.configure(text="Bereit")
+                
+                self.add_log("INFO", f"Continuous Scan gestoppt - "
+                           f"{status['total_scans']} Scans, "
+                           f"{status['total_files_processed']} Dateien verarbeitet")
+                
+                self.continuous_scan_service = None
+                
+                messagebox.showinfo("Continuous Scan", 
+                                  f"Scan gestoppt!\n\n"
+                                  f"Statistik:\n"
+                                  f"• {status['total_scans']} Scan-Durchläufe\n"
+                                  f"• {status['total_files_processed']} Dateien verarbeitet")
+            else:
+                messagebox.showerror("Fehler", "Konnte Scan nicht stoppen!")
+    
     def process_single_document(self, file_path: str):
         """
-        Verarbeitet ein einzelnes Dokument (wird von Watchdog aufgerufen).
+        Verarbeitet ein einzelnes Dokument (wird von Watchdog/Continuous Scan aufgerufen).
         
         Args:
             file_path: Pfad zum Dokument
@@ -4129,6 +4211,11 @@ class MainWindow(ctk.CTk):
         if hasattr(self, 'watchdog_service') and self.watchdog_service and self.watchdog_service.is_watching:
             print("Stoppe Watchdog...")
             self.watchdog_service.stop()
+        
+        # Continuous Scan stoppen falls aktiv
+        if hasattr(self, 'continuous_scan_service') and self.continuous_scan_service and self.continuous_scan_service.is_running:
+            print("Stoppe Continuous Scan...")
+            self.continuous_scan_service.stop()
 
         # Log-Eintrag
         if hasattr(self, 'log_buffer'):
