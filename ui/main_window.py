@@ -22,6 +22,7 @@ from services.vorlagen import VorlagenManager
 from services.pattern_manager import PatternManager
 from services.virtual_customer_manager import VirtualCustomerManager
 from core.folder_structure_manager import FolderStructureManager
+from core.config_backup import ConfigBackupManager
 from services.keyword_detector import KeywordDetector
 
 try:
@@ -60,6 +61,7 @@ class MainWindow(ctk.CTk):
             config.get("folder_structure", {}),
             archive_root_dir=config.get("root_dir", "")
         )
+        self.config_backup_manager = ConfigBackupManager()
         self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
         self.is_processing = False  # Flag um Doppelverarbeitung zu verhindern
@@ -176,7 +178,7 @@ class MainWindow(ctk.CTk):
         time.sleep(0.5)  # Längere Animation zwischen Steps für bessere UX
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten vollständig synchron mit Animation."""
+        """Initialisiert die GUI-Komponenten VOLLSTÄNDIG vor dem Anzeigen - für flüssige Bedienung."""
         self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
         
         # Tabview erstellen
@@ -193,18 +195,21 @@ class MainWindow(ctk.CTk):
         self.tabview.add("System")
         self.tabview.add("Logs")
         
-        # Erstelle ALLE Tabs und lade ALLE Daten synchron
+        # Erstelle ALLE Tabs vollständig (dauert, aber dann ist alles flüssig)
         self.update_loading_progress(0.1, "⚙️  Lade Einstellungen...", "Konfiguration und Pfade")
         self.create_settings_tab()
         self.tabs_created["Einstellungen"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.2, "📁 Lade Verarbeitung...", "Scan- und Verarbeitungs-Funktionen")
         self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "Such-Interface")
         self.create_search_tab()
         self.tabs_created["Suche"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.4, "📊 Lade Such-Daten...", "Dokumenttypen und Jahre aus Datenbank")
         try:
@@ -220,14 +225,17 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
             self.update_loading_progress(0.45, "📊 Such-Daten (Fehler)", "Fallback zu Standard-Werten")
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "Nachbearbeitungs-Interface")
         self.create_unclear_tab()
         self.tabs_created["Unklare Dokumente"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "Legacy-Interface")
         self.create_unclear_legacy_tab()
         self.tabs_created["Unklare Legacy-Aufträge"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.65, "📜 Lade Legacy-Daten...", "Unklare Legacy-Einträge aus DB")
         try:
@@ -249,39 +257,53 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
             self.update_loading_progress(0.7, "📜 Legacy-Daten (Fehler)", "Fallback zu leerem Tab")
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.75, "👥 Erstelle Virtuelle Kunden...", "Kunden-Verwaltung")
         self.create_virtual_customers_tab()
         self.tabs_created["Virtuelle Kunden"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
         self.create_patterns_tab()
         self.tabs_created["Regex-Patterns"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.85, "🔧 Erstelle System...", "System-Tools")
         self.create_system_tab()
         self.tabs_created["System"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         self.update_loading_progress(0.9, "📋 Erstelle Logs...", "Debug-Log-Anzeige")
         self.create_logs_tab()
         self.tabs_created["Logs"] = True
+        self.update_idletasks()  # GUI entsperren zwischen Tabs
         
         # Alles vollständig geladen
         self.update_loading_progress(1.0, "✅ Vollständig geladen!", "Alle Tabs und Daten sind bereit")
+        
+        # WICHTIG: GUI-Event-Loop leeren bevor wir fertig sind
+        self.update_idletasks()
+        self.update()
+        
         self.after(300, self._finalize_gui)
         
     def _finalize_gui(self):
-        """Entfernt Loading-Screen und zeigt GUI."""
+        """Entfernt Loading-Screen und zeigt GUI - komplett entsperrt."""
         self.loading_frame.pack_forget()
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Wechsle zum Standard-Tab (Verarbeitung)
         self.tabview.set("Verarbeitung")
+        
+        # GUI vollständig entsperren
+        self.update_idletasks()
+        self.update()
     
     def on_tab_change(self):
-        """Wird aufgerufen wenn ein Tab gewechselt wird - alle Daten bereits geladen."""
-        # Alle Tabs und Daten sind bereits vollständig geladen
-        pass
+        """Wird aufgerufen wenn ein Tab gewechselt wird - alle Tabs sind bereits vollständig geladen."""
+        # Nichts zu tun - alle Tabs wurden beim Start vollständig erstellt
+        # Dies sorgt für flüssiges Wechseln zwischen Tabs
         pass
     
     def create_settings_tab(self):
@@ -359,6 +381,56 @@ class MainWindow(ctk.CTk):
         # Status-Label
         self.settings_status = ctk.CTkLabel(action_frame, text="")
         self.settings_status.pack(pady=5)
+        
+        # ========== BACKUP-INFO ==========
+        backup_frame = ctk.CTkFrame(scroll_frame)
+        backup_frame.pack(fill="x", padx=10, pady=10)
+        
+        backup_title = ctk.CTkLabel(backup_frame, text="🛡️ Konfigurations-Backup", 
+                                   font=ctk.CTkFont(size=16, weight="bold"))
+        backup_title.pack(pady=10)
+        
+        # Info-Text
+        info_text = (
+            "Alle wichtigen Einstellungen werden automatisch im 'data/'-Ordner gesichert.\n"
+            "Bei Neuinstallation oder Verlust der config.json werden die Einstellungen\n"
+            "automatisch wiederhergestellt."
+        )
+        info_label = ctk.CTkLabel(backup_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=12),
+                                 text_color="gray")
+        info_label.pack(pady=5)
+        
+        # Backup-Status
+        backup_info = self.config_backup_manager.get_backup_info()
+        if backup_info:
+            timestamp = backup_info.get("timestamp", "unbekannt")
+            version = backup_info.get("version", "unbekannt")
+            size_kb = backup_info.get("size", 0) / 1024
+            
+            status_text = f"✓ Letztes Backup: {timestamp[:19]} (Version {version}, {size_kb:.1f} KB)"
+            status_color = "green"
+        else:
+            status_text = "⚠️ Noch kein Backup vorhanden (wird beim nächsten Speichern erstellt)"
+            status_color = "orange"
+        
+        self.backup_status_label = ctk.CTkLabel(backup_frame, text=status_text,
+                                               text_color=status_color,
+                                               font=ctk.CTkFont(size=12))
+        self.backup_status_label.pack(pady=5)
+        
+        # Restore-Button
+        restore_btn = ctk.CTkButton(backup_frame, text="🔄 Backup wiederherstellen",
+                                   command=self.restore_config_backup,
+                                   fg_color="orange",
+                                   hover_color="darkorange")
+        restore_btn.pack(pady=10)
+        
+        restore_info = ctk.CTkLabel(backup_frame, 
+                                   text="⚠️ Überschreibt aktuelle Einstellungen mit Backup-Version",
+                                   font=ctk.CTkFont(size=10),
+                                   text_color="gray")
+        restore_info.pack(pady=5)
         
         self.add_log("SUCCESS", f"Einstellungen-Tab erstellt ({len(self.entries)} Pfad-Felder)")
     
@@ -1636,10 +1708,74 @@ class MainWindow(ctk.CTk):
             if path:
                 self.entries[key].delete(0, "end")
                 self.entries[key].insert(0, path)
+                
+                # SPECIAL: Wenn root_dir geändert wird → Prüfe auf Archiv-Config
+                if key == "root_dir":
+                    self._load_archive_config_if_exists(path)
 
         finally:
             # Cursor zurücksetzen
             self.configure(cursor="")
+    
+    def _load_archive_config_if_exists(self, archive_root: str):
+        """
+        Lädt Archiv-spezifische Konfiguration falls vorhanden.
+        Wird automatisch aufgerufen wenn root_dir geändert wird.
+        
+        Args:
+            archive_root: Neuer Archiv-Root-Pfad
+        """
+        archive_config_file = os.path.join(archive_root, ".werkstattarchiv_structure.json")
+        
+        if not os.path.exists(archive_config_file):
+            # Keine Archiv-Config → Nutze Programm-Einstellungen
+            self.add_log("INFO", "Archiv-Ordner gewechselt", 
+                        f"Keine .werkstattarchiv_structure.json gefunden → Programm-Einstellungen aktiv")
+            
+            # Erstelle neuen FolderStructureManager mit aktuellen Einstellungen
+            self.folder_structure_manager = FolderStructureManager(
+                self.config.get("folder_structure", {}),
+                archive_root_dir=archive_root
+            )
+            
+            # Speichere Programm-Einstellungen ins Archiv
+            if self.folder_structure_manager.save_archive_config():
+                self.add_log("SUCCESS", "Archiv-Config erstellt", 
+                           f"Programm-Einstellungen nach {archive_config_file} kopiert")
+            
+            return
+        
+        # Archiv-Config existiert → Lade sie
+        try:
+            with open(archive_config_file, 'r', encoding='utf-8') as f:
+                archive_config = json.load(f)
+            
+            # Erstelle neuen FolderStructureManager mit Archiv-Config
+            self.folder_structure_manager = FolderStructureManager(
+                archive_config,
+                archive_root_dir=archive_root
+            )
+            
+            # Aktualisiere auch die Programm-Config (Sync)
+            self.config["folder_structure"] = archive_config
+            
+            # Erfolgs-Meldung
+            folder_template = archive_config.get("folder_template", "unbekannt")
+            filename_template = archive_config.get("filename_template", "unbekannt")
+            
+            self.add_log("SUCCESS", "Archiv-Config geladen", 
+                        f"Ordnerstruktur aus Archiv übernommen:\n  Ordner: {folder_template}\n  Datei: {filename_template}")
+            
+            # GUI-Status aktualisieren (falls Einstellungs-Tab offen)
+            if hasattr(self, 'settings_status'):
+                self.settings_status.configure(
+                    text="✓ Archiv-Ordner gewechselt (Config geladen)",
+                    text_color="green"
+                )
+        
+        except Exception as e:
+            self.add_log("ERROR", "Fehler beim Laden der Archiv-Config", 
+                        f"{archive_config_file}: {e}")
     
     def save_settings(self):
         """Speichert die Einstellungen in config.json."""
@@ -1661,21 +1797,25 @@ class MainWindow(ctk.CTk):
             # 2. Speichere Archiv-spezifische Konfiguration
             archive_saved = self.folder_structure_manager.save_archive_config()
             
-            if archive_saved:
-                self.settings_status.configure(
-                    text="✓ Einstellungen gespeichert (Programm + Archiv)", 
-                    text_color="green"
-                )
-                self.add_log("SUCCESS", "Einstellungen gespeichert", 
-                           f"Programm-Config + Archiv-Config ({self.folder_structure_manager.archive_config_file})")
+            # 3. Erstelle Backup im data/-Ordner (SICHERHEIT)
+            backup_created = self.config_backup_manager.create_backup(self.config)
+            
+            # Status-Meldung je nach Erfolg
+            if archive_saved and backup_created:
+                status_msg = "✓ Einstellungen gespeichert (Programm + Archiv + Backup)"
+                log_msg = f"Programm-Config + Archiv-Config + Backup ({self.config_backup_manager.BACKUP_FILE})"
+            elif archive_saved:
+                status_msg = "✓ Einstellungen gespeichert (Programm + Archiv)"
+                log_msg = "Programm-Config + Archiv-Config gespeichert"
+            elif backup_created:
+                status_msg = "✓ Einstellungen gespeichert (Programm + Backup)"
+                log_msg = f"Programm-Config + Backup ({self.config_backup_manager.BACKUP_FILE})"
             else:
-                # Archiv-Config fehlgeschlagen (z.B. Verzeichnis existiert nicht oder keine Rechte)
-                self.settings_status.configure(
-                    text="✓ Programm-Einstellungen gespeichert", 
-                    text_color="green"
-                )
-                self.add_log("INFO", "Programm-Einstellungen gespeichert", 
-                           "Archiv-Config nicht gespeichert (Verzeichnis nicht verfügbar)")
+                status_msg = "✓ Programm-Einstellungen gespeichert"
+                log_msg = "Nur Programm-Config gespeichert (Archiv/Backup nicht verfügbar)"
+            
+            self.settings_status.configure(text=status_msg, text_color="green")
+            self.add_log("SUCCESS", "Einstellungen gespeichert", log_msg)
             
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 
@@ -1692,6 +1832,83 @@ class MainWindow(ctk.CTk):
             text=f"✓ {len(self.customer_manager.customers)} Kunden geladen",
             text_color="green"
         )
+    
+    def restore_config_backup(self):
+        """Stellt die Konfiguration aus dem Backup wieder her."""
+        from tkinter import messagebox
+        
+        # Sicherheitsabfrage
+        result = messagebox.askyesno(
+            "Backup wiederherstellen",
+            "Möchten Sie die Konfiguration aus dem Backup wiederherstellen?\n\n"
+            "⚠️ ACHTUNG: Dies überschreibt alle aktuellen Einstellungen!\n\n"
+            "Empfehlung: Nur verwenden nach Neuinstallation oder bei Problemen.",
+            icon='warning'
+        )
+        
+        if not result:
+            return
+        
+        # Restore durchführen
+        restored_config = self.config_backup_manager.restore_backup()
+        
+        if restored_config:
+            # Aktualisiere Config
+            self.config = restored_config
+            
+            # Aktualisiere GUI-Felder
+            for key, entry in self.entries.items():
+                value = self.config.get(key, "")
+                entry.delete(0, "end")
+                entry.insert(0, str(value) if value else "")
+            
+            # Aktualisiere Ordnerstruktur-Manager
+            if "folder_structure" in restored_config:
+                self.folder_structure_manager = FolderStructureManager(
+                    restored_config["folder_structure"],
+                    archive_root_dir=restored_config.get("root_dir", "")
+                )
+            
+            # Speichere wiederhergestellte Config
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            
+            # Status aktualisieren
+            self.settings_status.configure(
+                text="✓ Backup erfolgreich wiederhergestellt",
+                text_color="green"
+            )
+            self.add_log("SUCCESS", "Backup wiederhergestellt", 
+                        f"Konfiguration aus {self.config_backup_manager.BACKUP_FILE} geladen")
+            
+            # Backup-Info aktualisieren
+            backup_info = self.config_backup_manager.get_backup_info()
+            if backup_info:
+                timestamp = backup_info.get("timestamp", "unbekannt")
+                version = backup_info.get("version", "unbekannt")
+                size_kb = backup_info.get("size", 0) / 1024
+                status_text = f"✓ Letztes Backup: {timestamp[:19]} (Version {version}, {size_kb:.1f} KB)"
+                self.backup_status_label.configure(text=status_text, text_color="green")
+            
+            messagebox.showinfo(
+                "Backup wiederhergestellt",
+                "Die Konfiguration wurde erfolgreich wiederhergestellt.\n\n"
+                "Bitte starten Sie das Programm neu, um alle Änderungen zu übernehmen."
+            )
+        
+        else:
+            self.settings_status.configure(
+                text="✗ Fehler beim Wiederherstellen des Backups",
+                text_color="red"
+            )
+            self.add_log("ERROR", "Backup-Fehler", 
+                        "Konnte Backup nicht wiederherstellen")
+            
+            messagebox.showerror(
+                "Fehler",
+                "Das Backup konnte nicht wiederhergestellt werden.\n\n"
+                "Möglicherweise ist die Backup-Datei beschädigt oder nicht vorhanden."
+            )
     
     def on_vorlage_changed(self, selected_vorlage: str):
         """Callback wenn Vorlage geändert wird."""
