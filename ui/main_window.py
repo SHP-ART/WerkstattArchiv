@@ -91,8 +91,17 @@ class MainWindow(ctk.CTk):
         # Daten-Lade-Flags (für Refresh)
         self.tabs_data_loaded = {
             "Suche": False,
-            "Unklare Legacy-Aufträge": False
+            "Unklare Legacy-Aufträge": False,
+            "Statistics_cached": False,
+            "Virtual_customers_loaded": False,
+            "Suche_refreshed": False,
+            "Unklare_refreshed": False,
+            "Virtuelle_refreshed": False
         }
+        
+        # Cache für vorberechnete Daten (Performance-Optimierung)
+        self.cached_stats = {}
+        self.cached_virtual_count = 0
 
         # Cache für Dropdown-Liste
         self._customer_dropdown_cache = None
@@ -170,14 +179,12 @@ class MainWindow(ctk.CTk):
         self.loading_detail.pack(pady=2)
     
     def update_loading_progress(self, progress: float, status: str, detail: str = ""):
-        """Aktualisiert den Ladefortschritt mit sichtbarer Animation."""
+        """Aktualisiert den Ladefortschritt (optimiert ohne künstliche Verzögerung)."""
         self.loading_progress.set(progress)
         self.loading_status.configure(text=status)
         if detail:
             self.loading_detail.configure(text=detail)
-        self.update_idletasks()
-        # Kleine Verzögerung für sichtbare Animation (blockiert nicht die GUI)
-        self.after(100)  # 100ms Pause zwischen Steps
+        # Nur einmal update_idletasks() - keine künstliche Verzögerung
         self.update_idletasks()
     
     def init_gui(self):
@@ -245,8 +252,10 @@ class MainWindow(ctk.CTk):
         self.create_logs_tab()
         self.tabs_created["Logs"] = True
 
-        # Lade Daten NACH Tab-Erstellung
-        self.update_loading_progress(0.95, "📊 Lade Daten...", "Such-Daten und Legacy-Einträge")
+        # Lade Daten NACH Tab-Erstellung (optimiert und erweitert)
+        self.update_loading_progress(0.95, "📊 Lade Daten...", "Such-Daten, Legacy-Einträge & Statistiken")
+        
+        # 1. Such-Daten laden
         try:
             doc_types = ["Alle"] + self.document_index.get_all_document_types()
             years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
@@ -256,6 +265,7 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
 
+        # 2. Legacy-Einträge laden
         try:
             unclear_legacy = self.document_index.get_unclear_legacy_entries()
             for doc in unclear_legacy:
@@ -272,6 +282,18 @@ class MainWindow(ctk.CTk):
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
+        
+        # 3. Statistiken vorberechnen (Cache für schnellen Zugriff)
+        try:
+            self._preload_statistics()
+        except Exception as e:
+            print(f"Fehler beim Vorladen der Statistiken: {e}")
+        
+        # 4. Virtuelle Kunden-Daten laden
+        try:
+            self._preload_virtual_customers()
+        except Exception as e:
+            print(f"Fehler beim Laden der virtuellen Kunden: {e}")
 
         # Tabs erstellt - zeige GUI DIREKT!
         self.update_loading_progress(1.0, "✅ Fertig!", "")
@@ -296,7 +318,8 @@ class MainWindow(ctk.CTk):
         # GUI ist SOFORT bereit!
         self.gui_ready = True
 
-        # Commands SOFORT aktivieren (für sofortigen Tab-Wechsel)
+        # Commands aktivieren - aber on_tab_change macht nichts (pass)
+        # Dies ist nur für zukünftige Erweiterungen
         self.tabview.configure(command=self.on_tab_change)
 
         # Aktiviere Vorlagen-Selector Command
@@ -2927,9 +2950,17 @@ class MainWindow(ctk.CTk):
             widget.destroy()
     
     def show_statistics(self):
-        """Zeigt Statistiken über die indexierten Dokumente."""
+        """Zeigt Statistiken über die indexierten Dokumente (nutzt Cache)."""
         try:
-            stats = self.document_index.get_statistics()
+            # Nutze gecachte Statistiken falls verfügbar, sonst neu laden
+            if self.tabs_data_loaded.get("Statistics_cached", False) and self.cached_stats:
+                stats = self.cached_stats
+                print("✓ Statistiken aus Cache geladen")
+            else:
+                stats = self.document_index.get_statistics()
+                self.cached_stats = stats
+                self.tabs_data_loaded["Statistics_cached"] = True
+                print("✓ Statistiken neu berechnet und gecacht")
             
             # Erstelle ein neues Fenster für Statistiken
             stats_window = ctk.CTkToplevel(self)
@@ -4368,6 +4399,73 @@ class MainWindow(ctk.CTk):
         
         self.log_status.configure(text=f"✓ {len(self.log_buffer)} Log-Einträge", 
                                  text_color="green")
+    
+    # ==================== PRELOADING & LAZY LOADING ====================
+    
+    def _preload_statistics(self):
+        """Vorberechnung der Statistiken für schnellen Zugriff."""
+        try:
+            self.cached_stats = self.document_index.get_statistics()
+            self.tabs_data_loaded["Statistics_cached"] = True
+            print("✓ Statistiken vorberechnet")
+        except Exception as e:
+            print(f"Fehler beim Vorberechnen der Statistiken: {e}")
+            self.cached_stats = {}
+    
+    def _preload_virtual_customers(self):
+        """Lädt virtuelle Kunden-Daten beim Start."""
+        try:
+            # Anzahl virtueller Kunden zählen
+            virtual_count = sum(1 for c in self.customer_manager.customers.values() 
+                               if hasattr(c, 'is_virtual') and c.is_virtual)
+            self.cached_virtual_count = virtual_count
+            self.tabs_data_loaded["Virtual_customers_loaded"] = True
+            print(f"✓ Virtuelle Kunden gezählt: {virtual_count}")
+        except Exception as e:
+            print(f"Fehler beim Laden virtueller Kunden: {e}")
+            self.cached_virtual_count = 0
+    
+    def _refresh_search_data(self):
+        """Aktualisiert Such-Daten beim ersten Tab-Besuch."""
+        try:
+            # Aktualisiere Dropdown-Werte
+            doc_types = ["Alle"] + self.document_index.get_all_document_types()
+            years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+            
+            current_type = self.search_dokument_typ.get()
+            current_year = self.search_jahr.get()
+            
+            self.search_dokument_typ.configure(values=doc_types)
+            self.search_jahr.configure(values=years)
+            
+            # Behalte Auswahl wenn noch gültig
+            if current_type in doc_types:
+                self.search_dokument_typ.set(current_type)
+            if current_year in years:
+                self.search_jahr.set(current_year)
+                
+            print("✓ Such-Daten aktualisiert")
+        except Exception as e:
+            print(f"Fehler beim Aktualisieren der Such-Daten: {e}")
+    
+    def _refresh_unclear_documents(self):
+        """Aktualisiert unklare Dokumente beim ersten Tab-Besuch."""
+        try:
+            # Zähle nur - vollständiges Laden erfolgt bei Bedarf
+            unclear_count = len(self.document_index.get_unclear_legacy_entries())
+            print(f"✓ Unklare Dokumente: {unclear_count}")
+        except Exception as e:
+            print(f"Fehler beim Aktualisieren unklarer Dokumente: {e}")
+    
+    def _refresh_virtual_customers(self):
+        """Aktualisiert virtuelle Kunden beim ersten Tab-Besuch."""
+        try:
+            # Lade vollständige Liste beim ersten Besuch
+            virtual_customers = [c for c in self.customer_manager.customers.values() 
+                                if hasattr(c, 'is_virtual') and c.is_virtual]
+            print(f"✓ Virtuelle Kunden geladen: {len(virtual_customers)}")
+        except Exception as e:
+            print(f"Fehler beim Aktualisieren virtueller Kunden: {e}")
 
 
 def create_and_run_gui(config: Dict[str, Any], customer_manager: CustomerManager):
