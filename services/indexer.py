@@ -93,41 +93,79 @@ class DocumentIndex:
         # Migration: Füge neue Spalten hinzu falls sie nicht existieren
         self._migrate_database(cursor)
         
-        # Index für schnellere Suchen
+        # ===== INDEXES für dokumente TABELLE =====
+        # Single-Column Indexes (häufige WHERE-Clauses)
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_kunden_nr 
+            CREATE INDEX IF NOT EXISTS idx_kunden_nr
             ON dokumente(kunden_nr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_auftrag_nr 
+            CREATE INDEX IF NOT EXISTS idx_auftrag_nr
             ON dokumente(auftrag_nr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_jahr 
+            CREATE INDEX IF NOT EXISTS idx_jahr
             ON dokumente(jahr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dokument_typ 
+            CREATE INDEX IF NOT EXISTS idx_dokument_typ
             ON dokumente(dokument_typ)
         """)
-        
-        # Index für unclear_legacy
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_status
+            ON dokumente(status)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_is_legacy
+            ON dokumente(is_legacy)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_fin
+            ON dokumente(fin)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kennzeichen
+            ON dokumente(kennzeichen)
+        """)
+
+        # Composite Index (kunden_nr, jahr) - sehr häufig zusammen abgefragt
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kunden_nr_jahr
+            ON dokumente(kunden_nr, jahr)
+        """)
+
+        # Index für Ordering (verarbeitet_am DESC)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_verarbeitet_am
+            ON dokumente(verarbeitet_am DESC)
+        """)
+
+        # ===== INDEXES für unclear_legacy TABELLE =====
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_status
             ON unclear_legacy(status)
         """)
-        
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_fin
             ON unclear_legacy(fin)
         """)
-        
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_auftrag_nr
             ON unclear_legacy(auftrag_nr)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_unclear_kennzeichen
+            ON unclear_legacy(kennzeichen)
         """)
         
         conn.commit()
@@ -141,7 +179,7 @@ class DocumentIndex:
         # Prüfe ob neue Spalten bereits existieren
         cursor.execute("PRAGMA table_info(dokumente)")
         columns = {row[1] for row in cursor.fetchall()}
-        
+
         # Neue Spalten die hinzugefügt werden sollen
         new_columns = {
             "fin": "TEXT",
@@ -153,7 +191,7 @@ class DocumentIndex:
             "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "last_update": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         }
-        
+
         # Füge fehlende Spalten hinzu
         for col_name, col_type in new_columns.items():
             if col_name not in columns:
@@ -164,6 +202,68 @@ class DocumentIndex:
                     # Spalte existiert bereits oder anderer Fehler
                     if "duplicate column" not in str(e).lower():
                         print(f"Hinweis beim Hinzufügen von '{col_name}': {e}")
+
+    def upgrade_indexes(self) -> Dict[str, Any]:
+        """
+        Aktualisiert die Datenbankindexes für bestehende Datenbanken.
+        Erstellt fehlende Indexes nach.
+
+        Returns:
+            Dictionary mit Upgrade-Statistiken
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Zähle existierende Indexes
+        cursor.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type='index' AND tbl_name='dokumente'
+        """)
+        indexes_before = cursor.fetchone()[0]
+
+        # Erstelle alle neuen Indexes
+        indexes_to_create = [
+            ("idx_status", "dokumente(status)"),
+            ("idx_is_legacy", "dokumente(is_legacy)"),
+            ("idx_fin", "dokumente(fin)"),
+            ("idx_kennzeichen", "dokumente(kennzeichen)"),
+            ("idx_kunden_nr_jahr", "dokumente(kunden_nr, jahr)"),
+            ("idx_verarbeitet_am", "dokumente(verarbeitet_am DESC)"),
+            ("idx_unclear_kennzeichen", "unclear_legacy(kennzeichen)"),
+        ]
+
+        created_count = 0
+        for idx_name, idx_def in indexes_to_create:
+            try:
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_def}")
+                created_count += 1
+            except Exception as e:
+                print(f"⚠ Fehler beim Erstellen von {idx_name}: {e}")
+
+        conn.commit()
+
+        # Zähle neue Indexes
+        cursor.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type='index' AND tbl_name='dokumente'
+        """)
+        indexes_after = cursor.fetchone()[0]
+
+        # Optimiere die Datenbank (VACUUM + ANALYZE)
+        cursor.execute("VACUUM")
+        cursor.execute("ANALYZE")
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "status": "success",
+            "indexes_before": indexes_before,
+            "indexes_after": indexes_after,
+            "new_indexes_created": created_count,
+            "message": f"Datenbank optimiert: {created_count} neue Indexes erstellt"
+        }
+
     
     def add_document(self, original_path: str, target_path: str, 
                     metadata: Dict[str, Any], status: str = "success") -> int:

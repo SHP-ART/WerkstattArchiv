@@ -51,6 +51,12 @@ class MainWindow(ctk.CTk):
         self.customer_manager = customer_manager
         self.unclear_documents: List[Dict[str, Any]] = []
         self.document_index = DocumentIndex()
+
+        # Aktualisiere Datenbank-Indexes (schnell da CREATE INDEX IF NOT EXISTS)
+        upgrade_result = self.document_index.upgrade_indexes()
+        if upgrade_result.get("new_indexes_created", 0) > 0:
+            print(f"✓ {upgrade_result['message']}")
+
         self.vorlagen_manager = VorlagenManager()
         self.pattern_manager = PatternManager()
         self.virtual_customer_manager = VirtualCustomerManager(
