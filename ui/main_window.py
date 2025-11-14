@@ -138,9 +138,9 @@ class MainWindow(ctk.CTk):
     
     def show_loading_screen(self):
         """Zeigt einen Ladebildschirm während die GUI geladen wird."""
-        # Loading Frame
+        # Loading Frame - mit place() für Z-Index ÜBER allem
         self.loading_frame = ctk.CTkFrame(self)
-        self.loading_frame.pack(fill="both", expand=True)
+        self.loading_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
         
         # Titel
         title = ctk.CTkLabel(self.loading_frame, text=f"{self.app_name} v{self.version}",
@@ -181,12 +181,16 @@ class MainWindow(ctk.CTk):
         self.update_idletasks()
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten - KOMPLETT vor dem Anzeigen."""
+        """Initialisiert die GUI-Komponenten - asynchron ohne GUI-Blockierung."""
         self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
-        
+
         # Tabview erstellen OHNE command (wird später gesetzt!)
         self.tabview = ctk.CTkTabview(self)
-        
+
+        # KRITISCH: Tabview SOFORT packen (muss sichtbar sein für Rendering!)
+        # Ladebildschirm liegt mit place() darüber → nicht sichtbar für User
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+
         # Tabs hinzufügen
         self.tabview.add("Einstellungen")
         self.tabview.add("Verarbeitung")
@@ -197,7 +201,10 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
         self.tabview.add("Logs")
-        
+
+        # Ladebildschirm ÜBER Tabview bringen
+        self.loading_frame.lift()
+
         # WICHTIG: Tab-Wechsel während des Ladens blockieren
         self.gui_ready = False
         
@@ -278,116 +285,42 @@ class MainWindow(ctk.CTk):
         self.update_idletasks()
         
         # Alles vollständig geladen
-        self.update_loading_progress(1.0, "✅ Vollständig geladen!", "Alle Tabs und Daten sind bereit")
+        self.update_loading_progress(1.0, "✅ Fertig!", "GUI wird angezeigt...")
         self.update_idletasks()
-        
-        # Kurze Pause damit "Vollständig geladen" sichtbar ist
-        self.after(300, self._show_gui)
-    
-        # Kurze Pause damit "Vollständig geladen" sichtbar ist
-        self.after(300, self._show_gui)
-    
+
+        # EINFACH: GUI SOFORT anzeigen - OHNE Rendering-Tricks!
+        print("✓ Alle Tabs erstellt - zeige GUI an")
+        self._show_gui()
+
     def _show_gui(self):
-        """Macht die GUI nach dem Laden sichtbar - SOFORT responsive."""
-        # WICHTIG: GUI ist jetzt bereit - Tab-Wechsel erlauben (VOR dem Wechsel!)
-        self.gui_ready = True
-        
-        # Entferne Ladebildschirm
-        self.loading_frame.pack_forget()
-        
-        # Zeige GUI (ERST JETZT!)
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Wechsle zum Standard-Tab (Verarbeitung) - NACH gui_ready = True!
+        """Macht die GUI nach dem Laden sichtbar - EINFACH und DIREKT."""
+        print("🔄 Zeige GUI an...")
+
+        # Entferne Ladebildschirm (place_forget, da mit place() erstellt!)
+        self.loading_frame.place_forget()
+
+        # Wechsle zum Standard-Tab
         self.tabview.set("Verarbeitung")
-        
-        # Verarbeite Render-Queue
+
+        # Single update
         self.update_idletasks()
-        
-        # Zeige "Aufwärmungs"-Animation (Command wird DANACH gesetzt)
-        self._show_warmup_animation()
-        
-        # GUI ist jetzt responsive
-        print("✓ GUI ist bereit und responsive!")
-    
-    def _show_warmup_animation(self):
-        """Zeigt eine kurze Animation während die GUI sich 'aufwärmt'."""
-        # Erstelle Overlay für Animation
-        overlay = ctk.CTkFrame(self, fg_color=("gray90", "gray13"))
-        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        
-        # Progress-Label
-        progress_label = ctk.CTkLabel(
-            overlay,
-            text="🚀 GUI wird optimiert...",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        progress_label.place(relx=0.5, rely=0.45, anchor="center")
-        
-        # Progress Bar
-        warmup_progress = ctk.CTkProgressBar(overlay, width=400)
-        warmup_progress.place(relx=0.5, rely=0.5, anchor="center")
-        warmup_progress.set(0)
-        
-        # Detail-Label
-        detail_label = ctk.CTkLabel(
-            overlay,
-            text="Initialisiere Event-Loop...",
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        )
-        detail_label.place(relx=0.5, rely=0.55, anchor="center")
-        
-        # Starte Animation
-        self._animate_warmup(overlay, warmup_progress, detail_label, 0)
-    
-    def _animate_warmup(self, overlay, progress_bar, detail_label, step):
-        """Animiert die Aufwärmphase."""
-        steps = 20  # 20 Steps × 250ms = 5 Sekunden
-        
-        if step < steps:
-            # Aktualisiere Progress
-            progress = (step + 1) / steps
-            progress_bar.set(progress)
-            
-            # Wechselnde Detail-Texte
-            texts = [
-                "Initialisiere Event-Loop...",
-                "Optimiere Widget-Rendering...",
-                "Verarbeite ausstehende Events...",
-                "Cache wird aufgewärmt...",
-                "Finalisiere GUI-Komponenten...",
-                "Fast fertig..."
-            ]
-            text_index = int(step / (steps / len(texts)))
-            if text_index < len(texts):
-                detail_label.configure(text=texts[text_index])
-            
-            # Verarbeite Events damit GUI responsive bleibt
-            self.update_idletasks()
-            
-            # Nächster Schritt nach 250ms
-            self.after(250, lambda: self._animate_warmup(overlay, progress_bar, detail_label, step + 1))
-        else:
-            # Animation fertig - entferne Overlay
-            overlay.place_forget()
-            overlay.destroy()
-            
-            # JETZT erst Command für Tab-Wechsel und Vorlagen-Selector setzen
-            # Command muss über _configure gesetzt werden, da es nicht mehr im __init__ ist
-            self.tabview.configure(command=self.on_tab_change)
-            
-            # Aktiviere Vorlagen-Selector Command
-            if hasattr(self, 'vorlage_selector'):
-                self.vorlage_selector.configure(command=self.on_vorlage_changed)
-            
-            print("✓ GUI vollständig aufgewärmt!")
-    
+
+        # GUI ist SOFORT bereit - KEIN Delay!
+        self.gui_ready = True
+
+        # Commands SOFORT aktivieren
+        self.tabview.configure(command=self.on_tab_change)
+
+        # Aktiviere Vorlagen-Selector Command
+        if hasattr(self, 'vorlage_selector'):
+            self.vorlage_selector.configure(command=self.on_vorlage_changed)
+
+        print("✓ GUI bereit - CustomTkinter rendert on-demand!")
     
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
-        # Alle Tabs sind bereits vollständig geladen - nichts zu tun!
-        # Kein update() oder update_idletasks() für maximale Performance
+        # NICHTS TUN - CustomTkinter rendert automatisch!
+        # Kein update(), kein update_idletasks() → maximale Performance!
         pass
     
     def create_settings_tab(self):
