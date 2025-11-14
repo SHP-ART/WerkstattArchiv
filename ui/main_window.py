@@ -181,7 +181,7 @@ class MainWindow(ctk.CTk):
         self.update_idletasks()
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten - asynchron ohne GUI-Blockierung."""
+        """Initialisiert die GUI-Komponenten - SCHNELL und dann ASYNC rendering."""
         self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
 
         # Tabview erstellen OHNE command (wird später gesetzt!)
@@ -207,24 +207,46 @@ class MainWindow(ctk.CTk):
 
         # WICHTIG: Tab-Wechsel während des Ladens blockieren
         self.gui_ready = False
-        
-        # Lade ALLE Tabs SYNCHRON (keine after()-Delays mehr!)
-        self.update_loading_progress(0.1, "⚙️  Lade Einstellungen...", "Konfiguration und Pfade")
+
+        # NEUE STRATEGIE: Alle Tabs SCHNELL erstellen (keine update_idletasks!)
+        self.update_loading_progress(0.1, "⚙️  Erstelle Einstellungen...", "")
         self.create_settings_tab()
         self.tabs_created["Einstellungen"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.2, "📁 Lade Verarbeitung...", "Scan- und Verarbeitungs-Funktionen")
+
+        self.update_loading_progress(0.2, "📁 Erstelle Verarbeitung...", "")
         self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "Such-Interface")
+
+        self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "")
         self.create_search_tab()
         self.tabs_created["Suche"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.4, "📊 Lade Such-Daten...", "Dokumenttypen und Jahre aus Datenbank")
+
+        self.update_loading_progress(0.4, "⚠️  Erstelle Unklare Dokumente...", "")
+        self.create_unclear_tab()
+        self.tabs_created["Unklare Dokumente"] = True
+
+        self.update_loading_progress(0.5, "📜 Erstelle Legacy-Aufträge...", "")
+        self.create_unclear_legacy_tab()
+        self.tabs_created["Unklare Legacy-Aufträge"] = True
+
+        self.update_loading_progress(0.6, "👥 Erstelle Virtuelle Kunden...", "")
+        self.create_virtual_customers_tab()
+        self.tabs_created["Virtuelle Kunden"] = True
+
+        self.update_loading_progress(0.7, "🔤 Erstelle Regex-Patterns...", "")
+        self.create_patterns_tab()
+        self.tabs_created["Regex-Patterns"] = True
+
+        self.update_loading_progress(0.8, "🔧 Erstelle System...", "")
+        self.create_system_tab()
+        self.tabs_created["System"] = True
+
+        self.update_loading_progress(0.9, "📋 Erstelle Logs...", "")
+        self.create_logs_tab()
+        self.tabs_created["Logs"] = True
+
+        # Lade Daten NACH Tab-Erstellung
+        self.update_loading_progress(0.95, "📊 Lade Daten...", "Such-Daten und Legacy-Einträge")
         try:
             doc_types = ["Alle"] + self.document_index.get_all_document_types()
             years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
@@ -233,19 +255,7 @@ class MainWindow(ctk.CTk):
             self.tabs_data_loaded["Suche"] = True
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "Nachbearbeitungs-Interface")
-        self.create_unclear_tab()
-        self.tabs_created["Unklare Dokumente"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "Legacy-Interface")
-        self.create_unclear_legacy_tab()
-        self.tabs_created["Unklare Legacy-Aufträge"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.65, "📜 Lade Legacy-Daten...", "Unklare Legacy-Einträge aus DB")
+
         try:
             unclear_legacy = self.document_index.get_unclear_legacy_entries()
             for doc in unclear_legacy:
@@ -262,61 +272,39 @@ class MainWindow(ctk.CTk):
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.75, "👥 Erstelle Virtuelle Kunden...", "Kunden-Verwaltung")
-        self.create_virtual_customers_tab()
-        self.tabs_created["Virtuelle Kunden"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
-        self.create_patterns_tab()
-        self.tabs_created["Regex-Patterns"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.85, "🔧 Erstelle System...", "System-Tools")
-        self.create_system_tab()
-        self.tabs_created["System"] = True
-        self.update_idletasks()
-        
-        self.update_loading_progress(0.9, "📋 Erstelle Logs...", "Debug-Log-Anzeige")
-        self.create_logs_tab()
-        self.tabs_created["Logs"] = True
-        self.update_idletasks()
-        
-        # Alles vollständig geladen
-        self.update_loading_progress(1.0, "✅ Fertig!", "GUI wird angezeigt...")
-        self.update_idletasks()
 
-        # EINFACH: GUI SOFORT anzeigen - OHNE Rendering-Tricks!
-        print("✓ Alle Tabs erstellt - zeige GUI an")
+        # Tabs erstellt - zeige GUI DIREKT!
+        self.update_loading_progress(1.0, "✅ Fertig!", "")
+        print("✓ Alle Tabs erstellt - zeige GUI")
+
+        # GUI zeigen - EINFACH und DIREKT
         self._show_gui()
 
     def _show_gui(self):
-        """Macht die GUI nach dem Laden sichtbar - EINFACH und DIREKT."""
-        print("🔄 Zeige GUI an...")
+        """Macht die GUI nach dem Laden sichtbar."""
+        print("🔄 Zeige GUI...")
 
-        # Entferne Ladebildschirm (place_forget, da mit place() erstellt!)
+        # Entferne Ladebildschirm SOFORT
         self.loading_frame.place_forget()
 
-        # Wechsle zum Standard-Tab
+        # Setze Standard-Tab
         self.tabview.set("Verarbeitung")
 
-        # Single update
+        # Schnelles Update (NICHT blockierend!)
         self.update_idletasks()
 
-        # GUI ist SOFORT bereit - KEIN Delay!
+        # GUI ist SOFORT bereit!
         self.gui_ready = True
 
-        # Commands SOFORT aktivieren
+        # Commands SOFORT aktivieren (für sofortigen Tab-Wechsel)
         self.tabview.configure(command=self.on_tab_change)
 
         # Aktiviere Vorlagen-Selector Command
         if hasattr(self, 'vorlage_selector'):
             self.vorlage_selector.configure(command=self.on_vorlage_changed)
 
-        print("✓ GUI bereit - CustomTkinter rendert on-demand!")
-    
+        print("✓ GUI bereit - Tab-Wechsel sofort möglich!")
+
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
         # NICHTS TUN - CustomTkinter rendert automatisch!
