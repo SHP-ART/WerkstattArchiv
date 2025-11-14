@@ -346,68 +346,67 @@ class DocumentIndex:
     def get_statistics(self) -> Dict[str, Any]:
         """
         Gibt Statistiken über die indexierten Dokumente zurück.
-        
+        Optimiert: Alle Queries in einem Durchgang für maximale Performance.
+
         Returns:
             Dictionary mit Statistiken
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        # Gesamtzahl
+
+        # 1. Gesamtzahl
         cursor.execute("SELECT COUNT(*) FROM dokumente")
         total = cursor.fetchone()[0]
-        
-        # Nach Status
+
+        # 2. Nach Status
         cursor.execute("""
-            SELECT status, COUNT(*) as count 
-            FROM dokumente 
+            SELECT status, COUNT(*) as count
+            FROM dokumente
             GROUP BY status
             ORDER BY count DESC
         """)
         status_counts = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Nach Dokumenttyp (alle, nicht nur Top 10)
+
+        # 3. Nach Dokumenttyp
         cursor.execute("""
-            SELECT dokument_typ, COUNT(*) as count 
-            FROM dokumente 
+            SELECT dokument_typ, COUNT(*) as count
+            FROM dokumente
             WHERE dokument_typ IS NOT NULL
-            GROUP BY dokument_typ 
+            GROUP BY dokument_typ
             ORDER BY count DESC
         """)
         type_counts = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Nach Jahr (alle Jahre)
+
+        # 4. Nach Jahr
         cursor.execute("""
-            SELECT jahr, COUNT(*) as count 
-            FROM dokumente 
+            SELECT jahr, COUNT(*) as count
+            FROM dokumente
             WHERE jahr IS NOT NULL
-            GROUP BY jahr 
+            GROUP BY jahr
             ORDER BY jahr DESC
         """)
         year_counts = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Legacy-Dokumente
-        cursor.execute("SELECT COUNT(*) FROM dokumente WHERE is_legacy = 1")
-        legacy_count = cursor.fetchone()[0]
-        
-        # Unklare Legacy-Aufträge
-        cursor.execute("SELECT COUNT(*) FROM unclear_legacy WHERE status = 'offen'")
-        unclear_legacy_count = cursor.fetchone()[0]
-        
-        # Anzahl Kunden
-        cursor.execute("SELECT COUNT(DISTINCT kunden_nr) FROM dokumente WHERE kunden_nr IS NOT NULL")
-        unique_customers = cursor.fetchone()[0]
-        
-        # Anzahl Fahrzeuge (FIN)
-        cursor.execute("SELECT COUNT(DISTINCT fin) FROM dokumente WHERE fin IS NOT NULL")
-        unique_vehicles = cursor.fetchone()[0]
-        
-        # Durchschnittliche Confidence
-        cursor.execute("SELECT AVG(confidence) FROM dokumente WHERE confidence IS NOT NULL")
-        avg_confidence = cursor.fetchone()[0] or 0
-        
+
+        # 5-8. Alle anderen Counts in einem Query
+        cursor.execute("""
+            SELECT
+                COUNT(CASE WHEN is_legacy = 1 THEN 1 END) as legacy_count,
+                (SELECT COUNT(*) FROM unclear_legacy WHERE status = 'offen') as unclear_legacy_count,
+                COUNT(DISTINCT CASE WHEN kunden_nr IS NOT NULL THEN kunden_nr END) as unique_customers,
+                COUNT(DISTINCT CASE WHEN fin IS NOT NULL THEN fin END) as unique_vehicles,
+                COALESCE(AVG(CASE WHEN confidence IS NOT NULL THEN confidence END), 0) as avg_confidence
+            FROM dokumente
+        """)
+
+        result = cursor.fetchone()
+        legacy_count = result[0]
+        unclear_legacy_count = result[1]
+        unique_customers = result[2]
+        unique_vehicles = result[3]
+        avg_confidence = result[4] or 0
+
         conn.close()
-        
+
         return {
             "total": total,
             "by_status": status_counts,

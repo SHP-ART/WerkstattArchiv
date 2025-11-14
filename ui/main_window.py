@@ -252,55 +252,15 @@ class MainWindow(ctk.CTk):
         self.create_logs_tab()
         self.tabs_created["Logs"] = True
 
-        # Lade Daten NACH Tab-Erstellung (optimiert und erweitert)
-        self.update_loading_progress(0.95, "📊 Lade Daten...", "Such-Daten, Legacy-Einträge & Statistiken")
-        
-        # 1. Such-Daten laden
-        try:
-            doc_types = ["Alle"] + self.document_index.get_all_document_types()
-            years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-            self.search_dokument_typ.configure(values=doc_types)
-            self.search_jahr.configure(values=years)
-            self.tabs_data_loaded["Suche"] = True
-        except Exception as e:
-            print(f"Fehler beim Laden der Such-Daten: {e}")
-
-        # 2. Legacy-Einträge laden
-        try:
-            unclear_legacy = self.document_index.get_unclear_legacy_entries()
-            for doc in unclear_legacy:
-                self._add_legacy_row(
-                    doc.get("ziel_pfad", ""),
-                    doc.get("kunden_name", "Unbekannt"),
-                    doc.get("auftrag_nr", "-"),
-                    doc.get("dokument_typ", "Unbekannt"),
-                    doc.get("kennzeichen", "-"),
-                    doc.get("fin", "-"),
-                    doc.get("confidence", 0.0),
-                    doc.get("hinweis", "")
-                )
-            self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
-        except Exception as e:
-            print(f"Fehler beim Laden der Legacy-Daten: {e}")
-        
-        # 3. Statistiken vorberechnen (Cache für schnellen Zugriff)
-        try:
-            self._preload_statistics()
-        except Exception as e:
-            print(f"Fehler beim Vorladen der Statistiken: {e}")
-        
-        # 4. Virtuelle Kunden-Daten laden
-        try:
-            self._preload_virtual_customers()
-        except Exception as e:
-            print(f"Fehler beim Laden der virtuellen Kunden: {e}")
-
-        # Tabs erstellt - zeige GUI DIREKT!
+        # Tabs erstellt - zeige GUI DIREKT! (Daten folgen asynchron)
         self.update_loading_progress(1.0, "✅ Fertig!", "")
         print("✓ Alle Tabs erstellt - zeige GUI")
 
-        # GUI zeigen - EINFACH und DIREKT
+        # GUI zeigen - EINFACH und DIREKT (KEINE blockierenden Datenbank-Queries!)
         self._show_gui()
+
+        # Lade Daten ASYNCHRON im Hintergrund (nicht blockierend!)
+        self.after(100, self._load_startup_data_async)
 
     def _show_gui(self):
         """Macht die GUI nach dem Laden sichtbar."""
@@ -333,7 +293,73 @@ class MainWindow(ctk.CTk):
         # NICHTS TUN - CustomTkinter rendert automatisch!
         # Kein update(), kein update_idletasks() → maximale Performance!
         pass
-    
+
+    def _load_startup_data_async(self):
+        """Lädt alle Startup-Daten asynchron im Hintergrund (nicht blockierend!)."""
+        import threading
+
+        def load_data():
+            """Lädt alle Daten im Background-Thread."""
+            try:
+                # 1. Such-Daten laden
+                try:
+                    doc_types = ["Alle"] + self.document_index.get_all_document_types()
+                    years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+                    # Update GUI von Main-Thread
+                    self.after(0, lambda: self._update_search_dropdowns(doc_types, years))
+                    self.tabs_data_loaded["Suche"] = True
+                except Exception as e:
+                    print(f"Fehler beim Laden der Such-Daten: {e}")
+
+                # 2. Legacy-Einträge laden
+                try:
+                    unclear_legacy = self.document_index.get_unclear_legacy_entries()
+                    # Update GUI von Main-Thread
+                    self.after(0, lambda: self._update_legacy_entries(unclear_legacy))
+                    self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+                except Exception as e:
+                    print(f"Fehler beim Laden der Legacy-Daten: {e}")
+
+                # 3. Statistiken vorberechnen (Cache für schnellen Zugriff)
+                try:
+                    self._preload_statistics()
+                except Exception as e:
+                    print(f"Fehler beim Vorladen der Statistiken: {e}")
+
+                # 4. Virtuelle Kunden-Daten laden
+                try:
+                    self._preload_virtual_customers()
+                except Exception as e:
+                    print(f"Fehler beim Laden der virtuellen Kunden: {e}")
+
+                print("✓ Alle Startup-Daten geladen (asynchron)")
+            except Exception as e:
+                print(f"Kritischer Fehler beim Laden von Startup-Daten: {e}")
+
+        # Starte Background-Thread für Datenladung
+        thread = threading.Thread(target=load_data, daemon=True)
+        thread.start()
+
+    def _update_search_dropdowns(self, doc_types: list, years: list):
+        """Updated Such-Dropdowns von GUI-Thread."""
+        try:
+            if hasattr(self, 'search_dokument_typ') and self.search_dokument_typ:
+                self.search_dokument_typ.configure(values=doc_types)
+            if hasattr(self, 'search_jahr') and self.search_jahr:
+                self.search_jahr.configure(values=years)
+        except Exception as e:
+            print(f"Fehler beim Update der Search-Dropdowns: {e}")
+
+    def _update_legacy_entries(self, unclear_legacy: list):
+        """Updated Legacy-Einträge von GUI-Thread."""
+        try:
+            if not hasattr(self, 'legacy_container') or not self.legacy_container:
+                return
+            for doc in unclear_legacy:
+                self._add_legacy_entry_row(doc)
+        except Exception as e:
+            print(f"Fehler beim Update von Legacy-Einträgen: {e}")
+
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
         self.add_log("INFO", "Erstelle Einstellungen-Tab")
@@ -379,17 +405,12 @@ class MainWindow(ctk.CTk):
             browse_btn = ctk.CTkButton(row_frame, text="...", width=50,
                                        command=lambda k=key: self.browse_path(k))
             browse_btn.pack(side="left", padx=5)
-        
-        # GUI-Update für flüssige Darstellung
-        self.update_idletasks()
-        
+
         # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
         self.create_folder_structure_settings(scroll_frame)
-        self.update_idletasks()
-        
+
         # ========== SCHLAGWORT-EINSTELLUNGEN ==========
         self.create_keyword_settings(scroll_frame)
-        self.update_idletasks()
         
         # ========== AKTIONS-BUTTONS ==========
         action_frame = ctk.CTkFrame(scroll_frame)
