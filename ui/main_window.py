@@ -169,20 +169,22 @@ class MainWindow(ctk.CTk):
         self.loading_detail.pack(pady=2)
     
     def update_loading_progress(self, progress: float, status: str, detail: str = ""):
-        """Aktualisiert den Ladefortschritt mit Animation."""
+        """Aktualisiert den Ladefortschritt mit sichtbarer Animation."""
         self.loading_progress.set(progress)
         self.loading_status.configure(text=status)
         if detail:
             self.loading_detail.configure(text=detail)
         self.update_idletasks()
-        time.sleep(0.5)  # Längere Animation zwischen Steps für bessere UX
+        # Kleine Verzögerung für sichtbare Animation (blockiert nicht die GUI)
+        self.after(100)  # 100ms Pause zwischen Steps
+        self.update_idletasks()
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten VOLLSTÄNDIG vor dem Anzeigen - für flüssige Bedienung."""
+        """Initialisiert die GUI-Komponenten - KOMPLETT vor dem Anzeigen."""
         self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
         
-        # Tabview erstellen
-        self.tabview = ctk.CTkTabview(self, command=self.on_tab_change)
+        # Tabview erstellen OHNE command (wird später gesetzt!)
+        self.tabview = ctk.CTkTabview(self)
         
         # Tabs hinzufügen
         self.tabview.add("Einstellungen")
@@ -195,47 +197,45 @@ class MainWindow(ctk.CTk):
         self.tabview.add("System")
         self.tabview.add("Logs")
         
-        # Erstelle ALLE Tabs vollständig (dauert, aber dann ist alles flüssig)
+        # WICHTIG: Tab-Wechsel während des Ladens blockieren
+        self.gui_ready = False
+        
+        # Lade ALLE Tabs SYNCHRON (keine after()-Delays mehr!)
         self.update_loading_progress(0.1, "⚙️  Lade Einstellungen...", "Konfiguration und Pfade")
         self.create_settings_tab()
         self.tabs_created["Einstellungen"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.2, "📁 Lade Verarbeitung...", "Scan- und Verarbeitungs-Funktionen")
         self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "Such-Interface")
         self.create_search_tab()
         self.tabs_created["Suche"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.4, "📊 Lade Such-Daten...", "Dokumenttypen und Jahre aus Datenbank")
         try:
             doc_types = ["Alle"] + self.document_index.get_all_document_types()
             years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
-            self._search_doc_types = doc_types
-            self._search_years = years
             self.search_dokument_typ.configure(values=doc_types)
             self.search_jahr.configure(values=years)
             self.tabs_data_loaded["Suche"] = True
-            self.update_loading_progress(0.45, "📊 Such-Daten geladen", 
-                                        f"{len(doc_types)-1} Dokumenttypen, {len(years)-1} Jahre")
         except Exception as e:
             print(f"Fehler beim Laden der Such-Daten: {e}")
-            self.update_loading_progress(0.45, "📊 Such-Daten (Fehler)", "Fallback zu Standard-Werten")
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "Nachbearbeitungs-Interface")
         self.create_unclear_tab()
         self.tabs_created["Unklare Dokumente"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "Legacy-Interface")
         self.create_unclear_legacy_tab()
         self.tabs_created["Unklare Legacy-Aufträge"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.65, "📜 Lade Legacy-Daten...", "Unklare Legacy-Einträge aus DB")
         try:
@@ -252,58 +252,137 @@ class MainWindow(ctk.CTk):
                     doc.get("hinweis", "")
                 )
             self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
-            self.update_loading_progress(0.7, "📜 Legacy-Daten geladen", 
-                                        f"{len(unclear_legacy)} unklare Einträge")
         except Exception as e:
             print(f"Fehler beim Laden der Legacy-Daten: {e}")
-            self.update_loading_progress(0.7, "📜 Legacy-Daten (Fehler)", "Fallback zu leerem Tab")
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.75, "👥 Erstelle Virtuelle Kunden...", "Kunden-Verwaltung")
         self.create_virtual_customers_tab()
         self.tabs_created["Virtuelle Kunden"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "Pattern-Editor")
         self.create_patterns_tab()
         self.tabs_created["Regex-Patterns"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.85, "🔧 Erstelle System...", "System-Tools")
         self.create_system_tab()
         self.tabs_created["System"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         self.update_loading_progress(0.9, "📋 Erstelle Logs...", "Debug-Log-Anzeige")
         self.create_logs_tab()
         self.tabs_created["Logs"] = True
-        self.update_idletasks()  # GUI entsperren zwischen Tabs
+        self.update_idletasks()
         
         # Alles vollständig geladen
         self.update_loading_progress(1.0, "✅ Vollständig geladen!", "Alle Tabs und Daten sind bereit")
-        
-        # WICHTIG: GUI-Event-Loop leeren bevor wir fertig sind
         self.update_idletasks()
-        self.update()
         
-        self.after(300, self._finalize_gui)
+        # Kurze Pause damit "Vollständig geladen" sichtbar ist
+        self.after(300, self._show_gui)
+    
+        # Kurze Pause damit "Vollständig geladen" sichtbar ist
+        self.after(300, self._show_gui)
+    
+    def _show_gui(self):
+        """Macht die GUI nach dem Laden sichtbar - SOFORT responsive."""
+        # WICHTIG: GUI ist jetzt bereit - Tab-Wechsel erlauben (VOR dem Wechsel!)
+        self.gui_ready = True
         
-    def _finalize_gui(self):
-        """Entfernt Loading-Screen und zeigt GUI - komplett entsperrt."""
+        # Entferne Ladebildschirm
         self.loading_frame.pack_forget()
+        
+        # Zeige GUI (ERST JETZT!)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Wechsle zum Standard-Tab (Verarbeitung)
+        # Wechsle zum Standard-Tab (Verarbeitung) - NACH gui_ready = True!
         self.tabview.set("Verarbeitung")
         
-        # GUI vollständig entsperren
+        # Verarbeite Render-Queue
         self.update_idletasks()
-        self.update()
+        
+        # Zeige "Aufwärmungs"-Animation (Command wird DANACH gesetzt)
+        self._show_warmup_animation()
+        
+        # GUI ist jetzt responsive
+        print("✓ GUI ist bereit und responsive!")
+    
+    def _show_warmup_animation(self):
+        """Zeigt eine kurze Animation während die GUI sich 'aufwärmt'."""
+        # Erstelle Overlay für Animation
+        overlay = ctk.CTkFrame(self, fg_color=("gray90", "gray13"))
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        
+        # Progress-Label
+        progress_label = ctk.CTkLabel(
+            overlay,
+            text="🚀 GUI wird optimiert...",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        progress_label.place(relx=0.5, rely=0.45, anchor="center")
+        
+        # Progress Bar
+        warmup_progress = ctk.CTkProgressBar(overlay, width=400)
+        warmup_progress.place(relx=0.5, rely=0.5, anchor="center")
+        warmup_progress.set(0)
+        
+        # Detail-Label
+        detail_label = ctk.CTkLabel(
+            overlay,
+            text="Initialisiere Event-Loop...",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        detail_label.place(relx=0.5, rely=0.55, anchor="center")
+        
+        # Starte Animation
+        self._animate_warmup(overlay, warmup_progress, detail_label, 0)
+    
+    def _animate_warmup(self, overlay, progress_bar, detail_label, step):
+        """Animiert die Aufwärmphase."""
+        steps = 20  # 20 Steps × 250ms = 5 Sekunden
+        
+        if step < steps:
+            # Aktualisiere Progress
+            progress = (step + 1) / steps
+            progress_bar.set(progress)
+            
+            # Wechselnde Detail-Texte
+            texts = [
+                "Initialisiere Event-Loop...",
+                "Optimiere Widget-Rendering...",
+                "Verarbeite ausstehende Events...",
+                "Cache wird aufgewärmt...",
+                "Finalisiere GUI-Komponenten...",
+                "Fast fertig..."
+            ]
+            text_index = int(step / (steps / len(texts)))
+            if text_index < len(texts):
+                detail_label.configure(text=texts[text_index])
+            
+            # Verarbeite Events damit GUI responsive bleibt
+            self.update_idletasks()
+            
+            # Nächster Schritt nach 250ms
+            self.after(250, lambda: self._animate_warmup(overlay, progress_bar, detail_label, step + 1))
+        else:
+            # Animation fertig - entferne Overlay
+            overlay.place_forget()
+            overlay.destroy()
+            
+            # JETZT erst Command für Tab-Wechsel setzen (für minimale Verzögerung)
+            # Command muss über _configure gesetzt werden, da es nicht mehr im __init__ ist
+            self.tabview.configure(command=self.on_tab_change)
+            
+            print("✓ GUI vollständig aufgewärmt!")
+    
     
     def on_tab_change(self):
-        """Wird aufgerufen wenn ein Tab gewechselt wird - alle Tabs sind bereits vollständig geladen."""
-        # Nichts zu tun - alle Tabs wurden beim Start vollständig erstellt
-        # Dies sorgt für flüssiges Wechseln zwischen Tabs
+        """Wird aufgerufen wenn ein Tab gewechselt wird."""
+        # Alle Tabs sind bereits vollständig geladen - nichts zu tun!
+        # Kein update() oder update_idletasks() für maximale Performance
         pass
     
     def create_settings_tab(self):
@@ -1778,16 +1857,41 @@ class MainWindow(ctk.CTk):
                         f"{archive_config_file}: {e}")
     
     def save_settings(self):
-        """Speichert die Einstellungen in config.json."""
+        """Speichert die Einstellungen mit intelligentem Archiv-Config-Abgleich."""
+        # Sammle neue Einstellungen
+        new_config = {}
         for key, entry in self.entries.items():
             value = entry.get().strip()
             if value == "" or value.lower() == "none":
-                self.config[key] = None
+                new_config[key] = None
             else:
-                self.config[key] = value
+                new_config[key] = value
         
         # Speichere Ordnerstruktur-Einstellungen
-        self.config["folder_structure"] = self.folder_structure_manager.get_config()
+        new_config["folder_structure"] = self.folder_structure_manager.get_config()
+        
+        # WICHTIG: Prüfe ob root_dir geändert wurde
+        old_root_dir = self.config.get("root_dir", "")
+        new_root_dir = new_config.get("root_dir", "")
+        
+        if old_root_dir != new_root_dir and new_root_dir:
+            # Root-Dir wurde geändert → Prüfe auf Archiv-Config
+            result = self._check_and_compare_archive_config(new_root_dir, new_config)
+            
+            if result == "CANCEL":
+                # Abbruch - Benutzer soll neuen Ordner wählen
+                self.settings_status.configure(
+                    text="⚠️ Speichern abgebrochen - Bitte anderen Ordner wählen",
+                    text_color="orange"
+                )
+                return
+            elif result == "USE_ARCHIVE":
+                # Archiv-Config wurde übernommen
+                # new_config wurde in _check_and_compare_archive_config() aktualisiert
+                self.add_log("INFO", "Archiv-Config übernommen", f"Einstellungen aus {new_root_dir} geladen")
+        
+        # Aktualisiere lokale Config
+        self.config = new_config
         
         try:
             # 1. Speichere Programm-Konfiguration
@@ -1817,10 +1921,291 @@ class MainWindow(ctk.CTk):
             self.settings_status.configure(text=status_msg, text_color="green")
             self.add_log("SUCCESS", "Einstellungen gespeichert", log_msg)
             
+            # Aktualisiere GUI falls Archiv-Config geladen wurde
+            self._reload_settings_in_gui()
+            
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 
                                           text_color="red")
             self.add_log("ERROR", "Fehler beim Speichern der Einstellungen", str(e))
+    
+    def _check_and_compare_archive_config(self, archive_root: str, current_config: Dict[str, Any]) -> str:
+        """
+        Prüft ob im Archiv-Ordner eine Config existiert und vergleicht diese mit aktuellen Einstellungen.
+        
+        Args:
+            archive_root: Pfad zum Archiv-Verzeichnis
+            current_config: Aktuelle Konfiguration (wird bei USE_ARCHIVE modifiziert!)
+            
+        Returns:
+            "CONTINUE" - Keine Archiv-Config oder identisch, normal weitermachen
+            "USE_ARCHIVE" - Archiv-Config übernehmen (current_config wurde aktualisiert)
+            "CANCEL" - Abbrechen, Benutzer soll anderen Ordner wählen
+        """
+        archive_config_file = os.path.join(archive_root, ".werkstattarchiv_structure.json")
+        
+        # Fall 1: Keine Archiv-Config → Normal weitermachen
+        if not os.path.exists(archive_config_file):
+            self.add_log("INFO", "Keine Archiv-Config gefunden", f"Erstelle neue in {archive_root}")
+            return "CONTINUE"
+        
+        try:
+            # Lade Archiv-Config
+            with open(archive_config_file, 'r', encoding='utf-8') as f:
+                archive_config = json.load(f)
+            
+            # Vergleiche relevante Einstellungen
+            current_structure = current_config.get("folder_structure", {})
+            archive_structure = archive_config
+            
+            # Prüfe auf Unterschiede
+            differences = self._compare_configs(current_structure, archive_structure)
+            
+            # Fall 2: Identisch → Normal weitermachen
+            if not differences:
+                self.add_log("INFO", "Archiv-Config identisch", "Keine Änderungen notwendig")
+                return "CONTINUE"
+            
+            # Fall 3: Unterschiede gefunden → Dialog anzeigen
+            result = self._show_config_comparison_dialog(
+                archive_root,
+                current_structure,
+                archive_structure,
+                differences
+            )
+            
+            if result == "USE_ARCHIVE":
+                # Übernehme Archiv-Config
+                current_config["folder_structure"] = archive_structure
+                
+                # Aktualisiere auch den FolderStructureManager
+                self.folder_structure_manager = FolderStructureManager(
+                    archive_structure,
+                    archive_root_dir=archive_root
+                )
+                
+                return "USE_ARCHIVE"
+            elif result == "KEEP_CURRENT":
+                # Behalte aktuelle Config - überschreibe Archiv-Config
+                return "CONTINUE"
+            else:  # "CANCEL"
+                return "CANCEL"
+                
+        except Exception as e:
+            self.add_log("ERROR", f"Fehler beim Vergleichen der Archiv-Config", str(e))
+            return "CONTINUE"  # Bei Fehler normal weitermachen
+    
+    def _compare_configs(self, config1: Dict[str, Any], config2: Dict[str, Any]) -> List[tuple]:
+        """
+        Vergleicht zwei Configs und gibt Liste der Unterschiede zurück.
+        
+        Returns:
+            Liste von (key, value1, value2) Tupeln mit Unterschieden
+        """
+        differences = []
+        
+        # Alle Keys sammeln
+        all_keys = set(config1.keys()) | set(config2.keys())
+        
+        for key in all_keys:
+            val1 = config1.get(key)
+            val2 = config2.get(key)
+            
+            if val1 != val2:
+                differences.append((key, val1, val2))
+        
+        return differences
+    
+    def _show_config_comparison_dialog(self, archive_root: str, current_config: Dict[str, Any],
+                                       archive_config: Dict[str, Any], 
+                                       differences: List[tuple]) -> str:
+        """
+        Zeigt Dialog zum Vergleichen und Auswählen der Config.
+        
+        Returns:
+            "USE_ARCHIVE" - Archiv-Config übernehmen
+            "KEEP_CURRENT" - Aktuelle Config behalten
+            "CANCEL" - Abbrechen
+        """
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("⚠️ Archiv-Config gefunden")
+        dialog.geometry("900x700")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        result = {"choice": "CANCEL"}  # Default: Abbrechen
+        
+        # Header
+        header_frame = ctk.CTkFrame(dialog)
+        header_frame.pack(fill="x", padx=20, pady=20)
+        
+        title = ctk.CTkLabel(
+            header_frame,
+            text="🔍 Archiv-Konfiguration gefunden",
+            font=ctk.CTkFont(size=20, weight="bold")
+        )
+        title.pack(pady=10)
+        
+        info_text = (
+            f"Im gewählten Archiv-Ordner wurde eine bestehende Konfiguration gefunden:\n"
+            f"📁 {archive_root}\n\n"
+            f"Die Einstellungen unterscheiden sich von deinen aktuellen Programm-Einstellungen.\n"
+            f"Bitte wähle welche Konfiguration verwendet werden soll:"
+        )
+        info_label = ctk.CTkLabel(
+            header_frame,
+            text=info_text,
+            font=ctk.CTkFont(size=12),
+            justify="left"
+        )
+        info_label.pack(pady=10)
+        
+        # Unterschiede anzeigen
+        diff_frame = ctk.CTkFrame(dialog)
+        diff_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        diff_title = ctk.CTkLabel(
+            diff_frame,
+            text="📊 Unterschiede:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        diff_title.pack(pady=10)
+        
+        # Scrollable Frame für Unterschiede
+        scroll = ctk.CTkScrollableFrame(diff_frame)
+        scroll.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Header-Zeile
+        header_row = ctk.CTkFrame(scroll)
+        header_row.pack(fill="x", pady=5)
+        
+        ctk.CTkLabel(header_row, text="Einstellung", width=200,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        ctk.CTkLabel(header_row, text="Deine aktuelle Config", width=250,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        ctk.CTkLabel(header_row, text="Archiv-Config", width=250,
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+        
+        # Unterschiede auflisten
+        for key, current_val, archive_val in differences:
+            row = ctk.CTkFrame(scroll)
+            row.pack(fill="x", pady=2)
+            
+            # Key
+            key_label = ctk.CTkLabel(row, text=key, width=200, anchor="w")
+            key_label.pack(side="left", padx=5)
+            
+            # Current Value
+            current_str = str(current_val) if current_val is not None else "(nicht gesetzt)"
+            current_label = ctk.CTkLabel(row, text=current_str, width=250, 
+                                        anchor="w", text_color="orange")
+            current_label.pack(side="left", padx=5)
+            
+            # Archive Value
+            archive_str = str(archive_val) if archive_val is not None else "(nicht gesetzt)"
+            archive_label = ctk.CTkLabel(row, text=archive_str, width=250,
+                                        anchor="w", text_color="lightblue")
+            archive_label.pack(side="left", padx=5)
+        
+        # Button-Frame
+        button_frame = ctk.CTkFrame(dialog)
+        button_frame.pack(fill="x", padx=20, pady=20)
+        
+        def on_use_archive():
+            result["choice"] = "USE_ARCHIVE"
+            dialog.destroy()
+        
+        def on_keep_current():
+            result["choice"] = "KEEP_CURRENT"
+            dialog.destroy()
+        
+        def on_cancel():
+            result["choice"] = "CANCEL"
+            dialog.destroy()
+        
+        # Button-Grid mit 3 Spalten
+        button_grid = ctk.CTkFrame(button_frame)
+        button_grid.pack(expand=True)
+        
+        # Archiv übernehmen
+        archive_btn = ctk.CTkButton(
+            button_grid,
+            text="✅ Archiv-Config übernehmen\n(Empfohlen für bestehendes Archiv)",
+            command=on_use_archive,
+            width=250,
+            height=60,
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        archive_btn.grid(row=0, column=0, padx=10, pady=10)
+        
+        # Aktuelle behalten
+        keep_btn = ctk.CTkButton(
+            button_grid,
+            text="📝 Meine Config behalten\n(Überschreibt Archiv-Config)",
+            command=on_keep_current,
+            width=250,
+            height=60,
+            fg_color="orange",
+            hover_color="darkorange"
+        )
+        keep_btn.grid(row=0, column=1, padx=10, pady=10)
+        
+        # Abbrechen
+        cancel_btn = ctk.CTkButton(
+            button_grid,
+            text="❌ Abbrechen\n(Anderen Ordner wählen)",
+            command=on_cancel,
+            width=250,
+            height=60,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        cancel_btn.grid(row=0, column=2, padx=10, pady=10)
+        
+        # Info-Text unter Buttons
+        info_bottom = ctk.CTkLabel(
+            button_frame,
+            text="💡 Tipp: Wenn du mit einem bestehenden Archiv arbeitest, wähle 'Archiv-Config übernehmen'",
+            font=ctk.CTkFont(size=10, slant="italic"),
+            text_color="gray"
+        )
+        info_bottom.pack(pady=5)
+        
+        # Warte auf Benutzer-Entscheidung
+        self.wait_window(dialog)
+        
+        return result["choice"]
+    
+    def _reload_settings_in_gui(self):
+        """Lädt gespeicherte Einstellungen in die GUI-Felder."""
+        # Pfad-Felder aktualisieren
+        for key, entry in self.entries.items():
+            value = self.config.get(key)
+            entry.delete(0, "end")
+            if value:
+                entry.insert(0, str(value))
+        
+        # Ordnerstruktur-Felder aktualisieren
+        if hasattr(self, 'folder_template_entry'):
+            self.folder_template_entry.delete(0, "end")
+            self.folder_template_entry.insert(0, self.folder_structure_manager.folder_template)
+        
+        if hasattr(self, 'filename_template_entry'):
+            self.filename_template_entry.delete(0, "end")
+            self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
+        
+        # Optionen aktualisieren
+        if hasattr(self, 'replace_spaces_var'):
+            self.replace_spaces_var.set(self.folder_structure_manager.replace_spaces)
+        if hasattr(self, 'remove_invalid_var'):
+            self.remove_invalid_var.set(self.folder_structure_manager.remove_invalid_chars)
+        if hasattr(self, 'use_month_names_var'):
+            self.use_month_names_var.set(self.folder_structure_manager.use_month_names)
+        
+        # Vorschau aktualisieren
+        if hasattr(self, 'update_structure_preview'):
+            self.update_structure_preview()
     
     def reload_customers(self):
         """Lädt die Kundendatenbank neu."""
