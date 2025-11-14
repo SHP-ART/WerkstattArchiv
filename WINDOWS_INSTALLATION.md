@@ -63,19 +63,40 @@ Beispiel:
 
 ---
 
-## 🔍 OCR für gescannte PDFs (Optional)
+## 🔍 OCR für gescannte PDFs (Optional aber empfohlen!)
 
-Für die Texterkennung in gescannten PDFs/Bildern:
+⚠️ **Wichtig**: Ohne Tesseract funktioniert die Texterkennung in **gescannten** PDFs und Bildern **nicht**!
 
-1. Lade Tesseract OCR herunter:
+**Wofür wird Tesseract benötigt?**
+- ✅ Gescannte PDFs (ohne eingebetteten Text)
+- ✅ Bilder (JPG, PNG, TIFF)
+- ✅ Fotos von Dokumenten
+- ❌ **NICHT** für normale digitale PDFs (funktionieren ohne Tesseract)
+
+**Installation:**
+
+1. **Download Tesseract OCR**:
    👉 https://github.com/UB-Mannheim/tesseract/wiki
+   
+   Empfohlen: `tesseract-ocr-w64-setup-5.3.x.exe` (64-bit)
 
-2. Installiere mit deutscher Sprachunterstützung
+2. **Installation**:
+   - Installer starten
+   - ✅ **"Additional language data (download)"** anhaken
+   - ✅ **"German"** auswählen (für deutsche Dokumente)
+   - Standard-Pfad: `C:\Program Files\Tesseract-OCR`
 
-3. In WerkstattArchiv:
+3. **In WerkstattArchiv konfigurieren**:
+   - WerkstattArchiv starten
    - Tab "Einstellungen" öffnen
-   - "Tesseract-Pfad" eintragen (z.B. `C:\Program Files\Tesseract-OCR\tesseract.exe`)
-   - "Einstellungen speichern"
+   - Tesseract-Pfad eintragen: `C:\Program Files\Tesseract-OCR\tesseract.exe`
+   - "Alle Einstellungen speichern" klicken
+
+**Testen ob Tesseract funktioniert:**
+- Gescanntes PDF in Eingangsordner legen
+- "Eingangsordner scannen" klicken
+- Wenn Text erkannt wird: ✅ Tesseract funktioniert
+- Wenn "Tesseract nicht gefunden": ❌ Pfad prüfen
 
 ---
 
@@ -131,7 +152,13 @@ Die EXE kann auf andere Windows-PCs kopiert werden!
 ### "Dokumente werden nicht erkannt"
 - Richtige Auftragsvorlage wählen (Standard/Alternativ)
 - Kundennummer im Dokument vorhanden?
-- Tesseract für gescannte PDFs installiert?
+- Bei gescannten PDFs: Tesseract installiert? (siehe oben)
+
+### "Tesseract nicht gefunden" Warnung
+- Tesseract OCR ist nicht installiert (siehe OCR-Sektion oben)
+- Oder: Falscher Pfad in Einstellungen eingetragen
+- Prüfen: Existiert die Datei `C:\Program Files\Tesseract-OCR\tesseract.exe`?
+- **Hinweis**: Normale digitale PDFs funktionieren OHNE Tesseract!
 
 ### "Anwendung startet nicht"
 - Als Administrator ausführen

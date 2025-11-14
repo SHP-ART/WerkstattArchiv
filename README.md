@@ -108,11 +108,15 @@ cd WerkstattArchiv
 pip install -r requirements.txt
 ```
 
-### Schritt 3: Tesseract OCR installieren (optional)
+### Schritt 3: Tesseract OCR installieren (optional aber empfohlen!)
+
+⚠️ **Wichtig**: Tesseract wird **nur** für gescannte PDFs/Bilder benötigt. Digitale PDFs funktionieren ohne!
 
 **Windows:**
 - Download: https://github.com/UB-Mannheim/tesseract/wiki
-- Installieren und Pfad in `config.json` eintragen
+- Installiere mit deutscher Sprachdaten-Option
+- Detaillierte Anleitung: siehe [TESSERACT_SETUP.md](docs/TESSERACT_SETUP.md)
+- Pfad in GUI-Einstellungen eintragen: `C:\Program Files\Tesseract-OCR\tesseract.exe`
 
 **macOS:**
 ```bash
@@ -124,6 +128,8 @@ brew install tesseract-lang
 ```bash
 sudo apt-get install tesseract-ocr tesseract-ocr-deu
 ```
+
+📖 **Vollständiger Setup-Guide**: [docs/TESSERACT_SETUP.md](docs/TESSERACT_SETUP.md)
 
 ### Schritt 4: Konfiguration anpassen
 
