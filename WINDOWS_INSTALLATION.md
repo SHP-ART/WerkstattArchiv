@@ -75,6 +75,19 @@ Beispiel:
 
 **Installation:**
 
+### 🚀 Automatische Installation (Empfohlen):
+
+1. **Rechtsklick** auf `install_tesseract.bat`
+2. Wähle: **"Als Administrator ausführen"**
+3. Warte bis Installation abgeschlossen ist
+
+Das war's! Das Script:
+- ✅ Lädt Tesseract automatisch herunter
+- ✅ Installiert mit deutschen Sprachdaten
+- ✅ Trägt Pfad automatisch in config.json ein
+
+### 📝 Manuelle Installation:
+
 1. **Download Tesseract OCR**:
    👉 https://github.com/UB-Mannheim/tesseract/wiki
    
@@ -206,6 +219,7 @@ Neue Version installieren:
 ## 📁 Dateien Übersicht
 
 - `install.bat` - Hauptinstallation (als Admin)
+- `install_tesseract.bat` - Tesseract OCR installieren (als Admin)
 - `start.bat` - Anwendung starten
 - `setup_folders.bat` - Ordnerstruktur erstellen
 - `build_exe.bat` - EXE-Datei erstellen

@@ -23,7 +23,29 @@ Tesseract OCR ist eine **Open-Source-Software zur Texterkennung** in Bildern und
 
 ## Windows Installation
 
-### Schritt 1: Download
+### 🚀 Methode 1: Automatische Installation (Empfohlen!)
+
+**Schnellste und einfachste Methode:**
+
+1. **Rechtsklick** auf `install_tesseract.bat` im WerkstattArchiv-Ordner
+2. Wähle: **"Als Administrator ausführen"**
+3. Warte bis Installation abgeschlossen ist (ca. 2-3 Minuten)
+
+**Was macht das Script?**
+- ✅ Lädt Tesseract automatisch herunter
+- ✅ Installiert mit deutschen Sprachdaten
+- ✅ Trägt Pfad automatisch in `config.json` ein
+- ✅ Testet die Installation
+
+**Fertig!** Keine weitere Konfiguration nötig.
+
+---
+
+### 📝 Methode 2: Manuelle Installation
+
+Falls die automatische Installation nicht funktioniert:
+
+#### Schritt 1: Download
 
 👉 **Download-Link**: https://github.com/UB-Mannheim/tesseract/wiki
 
@@ -31,7 +53,7 @@ Wähle die neueste Version (empfohlen):
 - `tesseract-ocr-w64-setup-5.3.x.exe` (64-bit Windows)
 - `tesseract-ocr-w32-setup-5.3.x.exe` (32-bit Windows - selten)
 
-### Schritt 2: Installation
+#### Schritt 2: Installation
 
 1. **Installer starten** (Rechtsklick → "Als Administrator ausführen")
 
@@ -49,8 +71,14 @@ Wähle die neueste Version (empfohlen):
 
 4. **Installation abschließen**
 
-### Schritt 3: WerkstattArchiv konfigurieren
+#### Schritt 3: WerkstattArchiv konfigurieren
 
+**Automatisch** (mit Batch-Script):
+1. Im WerkstattArchiv-Ordner: Doppelklick auf `install_tesseract.bat`
+2. Wähle Option "Installation überspringen, nur konfigurieren"
+3. Fertig!
+
+**Manuell**:
 1. **WerkstattArchiv starten**
 
 2. **Tab "Einstellungen" öffnen**
