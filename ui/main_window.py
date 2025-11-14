@@ -373,9 +373,13 @@ class MainWindow(ctk.CTk):
             overlay.place_forget()
             overlay.destroy()
             
-            # JETZT erst Command für Tab-Wechsel setzen (für minimale Verzögerung)
+            # JETZT erst Command für Tab-Wechsel und Vorlagen-Selector setzen
             # Command muss über _configure gesetzt werden, da es nicht mehr im __init__ ist
             self.tabview.configure(command=self.on_tab_change)
+            
+            # Aktiviere Vorlagen-Selector Command
+            if hasattr(self, 'vorlage_selector'):
+                self.vorlage_selector.configure(command=self.on_vorlage_changed)
             
             print("✓ GUI vollständig aufgewärmt!")
     
@@ -1278,7 +1282,7 @@ class MainWindow(ctk.CTk):
         self.vorlage_selector = ctk.CTkSegmentedButton(
             control_frame,
             values=vorlagen,
-            command=self.on_vorlage_changed
+            command=None  # Command wird nach Warmup gesetzt
         )
         self.vorlage_selector.set(self.vorlagen_manager.get_active_vorlage().name)
         self.vorlage_selector.pack(side="left", padx=10)
@@ -1316,24 +1320,31 @@ class MainWindow(ctk.CTk):
         self.process_status = ctk.CTkLabel(control_frame, text="Bereit")
         self.process_status.pack(side="left", padx=10)
         
-        # Fortschrittsbalken (initial versteckt)
-        progress_container = ctk.CTkFrame(tab, fg_color="transparent")
-        progress_container.pack(fill="x", padx=10, pady=(5, 0))
+        # Info-Box für Vorlagen-Beschreibung
+        info_frame = ctk.CTkFrame(tab, fg_color=("#E8F4F8", "#1a3a4a"))
+        info_frame.pack(fill="x", padx=10, pady=(3, 0))
         
-        self.progress_bar = ctk.CTkProgressBar(progress_container, width=400, height=20)
-        self.progress_bar.set(0)
-        self.progress_bar.pack_forget()  # Initial versteckt
+        info_title = ctk.CTkLabel(info_frame, 
+                                 text="ℹ️ Vorlagen-Info",
+                                 font=ctk.CTkFont(size=12, weight="bold"))
+        info_title.pack(anchor="w", padx=10, pady=(3, 1))
         
-        self.progress_label = ctk.CTkLabel(progress_container, text="", 
-                                          font=ctk.CTkFont(size=10))
-        self.progress_label.pack_forget()  # Initial versteckt
+        self.vorlage_description = ctk.CTkLabel(
+            info_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            justify="left",
+            wraplength=900
+        )
+        self.vorlage_description.pack(anchor="w", padx=20, pady=(0, 3))
+        self._update_vorlage_description()
         
-        # Tabelle für Ergebnisse
+        # Tabelle für Ergebnisse (DIREKT nach Info-Box, ohne Zwischenraum)
         table_frame = ctk.CTkFrame(tab)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=(3, 10))
         
-        # Scrollable Frame für Tabelle
-        self.process_scroll = ctk.CTkScrollableFrame(table_frame)
+        # Scrollable Frame für Tabelle (größere Mindesthöhe)
+        self.process_scroll = ctk.CTkScrollableFrame(table_frame, height=500)
         self.process_scroll.pack(fill="both", expand=True)
         
         # Header
@@ -1349,6 +1360,11 @@ class MainWindow(ctk.CTk):
         # Container für Ergebnis-Zeilen
         self.results_container = ctk.CTkFrame(self.process_scroll)
         self.results_container.pack(fill="both", expand=True)
+        
+        # Fortschrittsbalken (werden dynamisch über der Tabelle angezeigt)
+        # WICHTIG: Werden erst bei Bedarf erstellt, nicht hier!
+        self.progress_bar = None
+        self.progress_label = None
     
     def create_search_tab(self):
         """Erstellt den Such-Tab."""
@@ -2309,6 +2325,35 @@ class MainWindow(ctk.CTk):
         """Aktualisiert die Vorlage-Info-Anzeige."""
         vorlage = self.vorlagen_manager.get_active_vorlage()
         self.vorlage_info.configure(text=f"ℹ️ {vorlage.beschreibung}")
+        # Update Description nur wenn Widget existiert
+        if hasattr(self, 'vorlage_description'):
+            self._update_vorlage_description()
+    
+    def _update_vorlage_description(self):
+        """Aktualisiert die ausführliche Vorlage-Beschreibung."""
+        vorlage = self.vorlagen_manager.get_active_vorlage()
+        
+        if vorlage.name == "Standard":
+            beschreibung = (
+                "📋 Standard-Vorlage für normale Werkstatt-Aufträge:\n"
+                "• Kundennummer: Erkennt 'Kunde Nr', 'Kd.Nr.', 'Kundennummer'\n"
+                "• Auftragsnummer: 'Werkstatt-Auftrag Nr: 11' oder 5-stellige Zahlen\n"
+                "• Datum: DD.MM.YYYY Format\n"
+                "• Dokumenttypen: Rechnung, KVA, Auftrag, HU, Garantie"
+            )
+        elif vorlage.name == "Alternativ":
+            beschreibung = (
+                "🔄 Alternativ-Vorlage für abweichende Dokumentformate:\n"
+                "• Kundennummer: 'Kundennummer', 'Kd-Nr'\n"
+                "• Auftragsnummer: 'Auftrags-Nr.', 'Auftragsnummer'\n"
+                "• Datum: 'Datum:', 'vom:' + DD.MM.YYYY\n"
+                "• Dokumenttypen: Zusätzlich 'Invoice', 'RE', 'Angebot', 'TÜV', 'Lieferschein'\n"
+                "→ Verwenden Sie diese Vorlage wenn Standard nicht funktioniert"
+            )
+        else:
+            beschreibung = vorlage.beschreibung
+        
+        self.vorlage_description.configure(text=beschreibung)
     
     def scan_input_folder(self):
         """Scannt den Eingangsordner und zeigt die gefundenen Dateien an."""
@@ -2435,11 +2480,27 @@ class MainWindow(ctk.CTk):
         self.scan_btn.configure(state="disabled")
         self.process_btn.configure(state="disabled", text="⏳ VERARBEITUNG LÄUFT...")
 
-        # Fortschrittsbalken anzeigen und zurücksetzen
-        self.progress_bar.set(0)
-        self.progress_bar.pack(pady=5)
-        self.progress_label.pack(pady=(0, 5))
-        self.progress_label.configure(text=f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
+        # Fortschrittsbalken erstellen falls nicht vorhanden
+        if self.progress_bar is None:
+            # Erstelle Progress-Container über der Tabelle
+            progress_container = ctk.CTkFrame(self.tabview.tab("Verarbeitung"), fg_color="transparent")
+            progress_container.pack(before=self.process_scroll.master, fill="x", padx=10, pady=(0, 5))
+            
+            self.progress_bar = ctk.CTkProgressBar(progress_container, width=400, height=20)
+            self.progress_bar.pack(pady=5)
+            
+            self.progress_label = ctk.CTkLabel(progress_container, text="", 
+                                              font=ctk.CTkFont(size=10))
+            self.progress_label.pack(pady=(0, 5))
+        else:
+            # Widgets existieren bereits - nur anzeigen falls versteckt
+            if not self.progress_bar.winfo_ismapped():
+                self.progress_bar.pack(pady=5)
+            if self.progress_label and not self.progress_label.winfo_ismapped():
+                self.progress_label.pack(pady=(0, 5))
+        
+        # Fortschrittsbalken zurücksetzen
+        self._update_progress(0, f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
 
         # Status aktualisieren
         self.process_status.configure(text="🔄 VERARBEITUNG GESTARTET - Bitte warten...", text_color="blue")
@@ -2449,6 +2510,20 @@ class MainWindow(ctk.CTk):
         thread = threading.Thread(target=self._process_documents)
         thread.daemon = True
         thread.start()
+    
+    def _update_progress(self, value: float, text: str = ""):
+        """Aktualisiert Progress-Bar und Label sicher (prüft ob Widgets existieren)."""
+        if self.progress_bar is not None:
+            self.progress_bar.set(value)
+        if self.progress_label is not None and text:
+            self.progress_label.configure(text=text)
+    
+    def _hide_progress(self):
+        """Blendet Progress-Widgets aus (prüft ob Widgets existieren)."""
+        if self.progress_bar is not None:
+            self.progress_bar.pack_forget()
+        if self.progress_label is not None:
+            self.progress_label.pack_forget()
     
     def _process_documents(self):
         """Verarbeitet alle Dokumente im Eingangsordner (läuft in Thread)."""
@@ -2527,8 +2602,7 @@ class MainWindow(ctk.CTk):
                 # Fortschritt PRO DATEI: Start bei 0%
                 def update_start(f=filename, idx=i, total=len(files)):
                     self._update_result_row(f, {}, f"⏳ Wird verarbeitet...", "yellow")
-                    self.progress_bar.set(0)
-                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Starte...")
+                    self._update_progress(0, f"Verarbeite Datei {idx+1} von {total}: Starte...")
                     self.process_status.configure(
                         text=f"🔄 Datei {idx+1}/{total}: {f}",
                         text_color="blue"
@@ -2540,8 +2614,7 @@ class MainWindow(ctk.CTk):
 
                 # Fortschritt: 20% - Datei wird gelesen
                 def update_reading(f=filename, idx=i, total=len(files)):
-                    self.progress_bar.set(0.2)
-                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Lese Datei...")
+                    self._update_progress(0.2, f"Verarbeite Datei {idx+1} von {total}: Lese Datei...")
                 self.after(0, update_reading)
 
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
@@ -2555,8 +2628,7 @@ class MainWindow(ctk.CTk):
 
                 # Fortschritt: 70% - Analyse abgeschlossen
                 def update_analyzed(f=filename, idx=i, total=len(files)):
-                    self.progress_bar.set(0.7)
-                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Analyse abgeschlossen...")
+                    self._update_progress(0.7, f"Verarbeite Datei {idx+1} von {total}: Analyse abgeschlossen...")
                 self.after(0, update_analyzed)
 
                 # DUPLIKATS-PRÜFUNG
@@ -2580,8 +2652,7 @@ class MainWindow(ctk.CTk):
                             shutil.move(file_path, dup_target_path)
 
                             def update_duplicate(f=filename, dup=dup_name, idx=i, total=len(files)):
-                                self.progress_bar.set(1.0)
-                                self.progress_label.configure(text=f"Datei {idx+1} von {total}: Duplikat erkannt und verschoben!")
+                                self._update_progress(1.0, f"Datei {idx+1} von {total}: Duplikat erkannt und verschoben!")
                                 self._update_result_row(f, analysis, f"⚠ Duplikat → verschoben in Duplikate/", "orange")
                             self.after(0, update_duplicate)
 
@@ -2606,8 +2677,7 @@ class MainWindow(ctk.CTk):
 
                 # Fortschritt: 90% - Dokument verschoben
                 def update_moved(f=filename, idx=i, total=len(files)):
-                    self.progress_bar.set(0.9)
-                    self.progress_label.configure(text=f"Verarbeite Datei {idx+1} von {total}: Dokument organisiert...")
+                    self._update_progress(0.9, f"Verarbeite Datei {idx+1} von {total}: Dokument organisiert...")
                 self.after(0, update_moved)
                 
                 # Logging
@@ -2641,8 +2711,7 @@ class MainWindow(ctk.CTk):
 
                 # Fortschritt: 100% - Fertig!
                 def update_complete(f=filename, a=analysis, s=status, c=color, idx=i, total=len(files)):
-                    self.progress_bar.set(1.0)
-                    self.progress_label.configure(text=f"Datei {idx+1} von {total}: Fertig!")
+                    self._update_progress(1.0, f"Datei {idx+1} von {total}: Fertig!")
                     self._update_result_row(f, a, s, c)
                 self.after(0, update_complete)
 
@@ -2655,8 +2724,7 @@ class MainWindow(ctk.CTk):
                 error_count += 1
                 # Fehler anzeigen (im Haupt-Thread) mit Fortschrittsbalken auf 100%
                 def update_error(f=filename, err=str(e), idx=i, total=len(files)):
-                    self.progress_bar.set(1.0)
-                    self.progress_label.configure(text=f"Datei {idx+1} von {total}: Fehler!")
+                    self._update_progress(1.0, f"Datei {idx+1} von {total}: Fehler!")
                     self._update_result_row(f, {}, f"✗ Fehler: {err}", "red")
                 self.after(0, update_error)
                 time.sleep(0.2)
@@ -2680,10 +2748,8 @@ class MainWindow(ctk.CTk):
         ))
         
         # Fortschrittsbalken auf 100% setzen und dann verstecken
-        self.after(0, lambda: self.progress_bar.set(1.0))
-        self.after(0, lambda: self.progress_label.configure(text=f"{len(files)} / {len(files)} Dokumente verarbeitet - Fertig!"))
-        self.after(2000, lambda: self.progress_bar.pack_forget())  # Nach 2 Sekunden ausblenden
-        self.after(2000, lambda: self.progress_label.pack_forget())
+        self.after(0, lambda: self._update_progress(1.0, f"{len(files)} / {len(files)} Dokumente verarbeitet - Fertig!"))
+        self.after(2000, lambda: self._hide_progress())  # Nach 2 Sekunden ausblenden
 
         # Button wieder aktivieren (im Haupt-Thread)
         self.after(0, lambda: self.scan_btn.configure(state="normal"))
