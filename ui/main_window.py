@@ -1669,12 +1669,13 @@ class MainWindow(ctk.CTk):
                 self.add_log("SUCCESS", "Einstellungen gespeichert", 
                            f"Programm-Config + Archiv-Config ({self.folder_structure_manager.archive_config_file})")
             else:
+                # Archiv-Config fehlgeschlagen (z.B. Verzeichnis existiert nicht oder keine Rechte)
                 self.settings_status.configure(
-                    text="✓ Programm-Einstellungen gespeichert (Archiv-Config fehlgeschlagen)", 
-                    text_color="orange"
+                    text="✓ Programm-Einstellungen gespeichert", 
+                    text_color="green"
                 )
-                self.add_log("WARNING", "Programm-Einstellungen gespeichert", 
-                           "Archiv-Config konnte nicht gespeichert werden")
+                self.add_log("INFO", "Programm-Einstellungen gespeichert", 
+                           "Archiv-Config nicht gespeichert (Verzeichnis nicht verfügbar)")
             
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 

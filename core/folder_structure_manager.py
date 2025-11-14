@@ -395,11 +395,19 @@ class FolderStructureManager:
             print("⚠️  Kein Archiv-Verzeichnis gesetzt - kann nicht speichern")
             return False
         
+        # Prüfe ob Archiv-Verzeichnis existiert
+        archive_dir = os.path.dirname(self.archive_config_file)
+        if not archive_dir or not os.path.exists(archive_dir):
+            print(f"⚠️  Archiv-Verzeichnis existiert nicht: {archive_dir}")
+            return False
+        
+        # Prüfe Schreibrechte
+        if not os.access(archive_dir, os.W_OK):
+            print(f"⚠️  Keine Schreibrechte für Archiv-Verzeichnis: {archive_dir}")
+            return False
+        
         try:
             import json
-            
-            # Erstelle Verzeichnis falls nötig
-            os.makedirs(os.path.dirname(self.archive_config_file), exist_ok=True)
             
             config = self.get_config()
             
@@ -408,6 +416,9 @@ class FolderStructureManager:
             
             print(f"✅ Archiv-Konfiguration gespeichert: {self.archive_config_file}")
             return True
+        except PermissionError as e:
+            print(f"⚠️  Keine Berechtigung zum Schreiben: {self.archive_config_file}")
+            return False
         except Exception as e:
             print(f"❌ Fehler beim Speichern der Archiv-Konfiguration: {e}")
             return False
