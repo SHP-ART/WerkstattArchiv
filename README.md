@@ -1,6 +1,6 @@
 # WerkstattArchiv
 
-**Version 0.8.6**
+**Version 0.8.7**
 
 Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokumenten.
 
@@ -10,6 +10,7 @@ Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokume
 - ✅ OCR-Unterstützung mit Tesseract
 - ✅ **Flexible Ordnerstrukturen** - 9 Profile wählbar (Standard, Mit Kundennummer, Chronologisch, etc.)
 - ✅ **Archiv-spezifische Konfiguration** - Jedes Archiv speichert seine eigene Struktur
+- ✅ **🛡️ Konfigurations-Backup** - Automatische Sicherung im data/-Ordner, Auto-Restore bei Neuinstallation
 - ✅ Moderne GUI mit customtkinter
 - ✅ **Dokumenten-Indexierung & Suche**
 - ✅ **Statistiken & Auswertungen**
@@ -36,10 +37,13 @@ WerkstattArchiv/
 ├── config.json                   # Programm-Konfiguration
 ├── requirements.txt              # Python-Abhängigkeiten
 ├── werkstatt_index.db           # SQLite-Datenbank (auto-erstellt)
+├── data/
+│   └── config_backup.json       # 🛡️ Automatisches Backup aller Einstellungen
 ├── ui/
 │   └── main_window.py           # GUI-Implementation (mit Legacy + Virtuellen Kunden)
 ├── core/
 │   ├── folder_structure_manager.py  # ⭐ Flexible Ordnerstrukturen (9 Profile)
+│   ├── config_backup.py         # 🛡️ Backup-Manager für Einstellungen
 │   └── keyword_detector.py      # ⭐ Schlagwort-Erkennung
 ├── services/
 │   ├── customers.py             # Kundenverwaltung (mit virtuellen Kunden)
@@ -193,6 +197,40 @@ python main.py
 
 ## 🆕 Changelog
 
+### Version 0.8.7 (14. November 2025)
+
+**Neue Features:**
+- 🛡️ **Konfigurations-Backup-System**: Automatische Sicherung aller wichtigen Einstellungen
+- 💾 **Zentrales Backup**: Alle Einstellungen werden in `data/config_backup.json` gespeichert
+- 🔄 **Automatisches Restore**: Bei Neuinstallation oder fehlendem config.json wird Backup automatisch wiederhergestellt
+- � **Automatisches Config-Sync**: Beim Wechseln des Archiv-Ordners wird automatisch die dortige Config geladen
+- �📊 **Backup-Info im Einstellungen-Tab**: Zeigt Zeitpunkt, Version und Größe des letzten Backups
+- 🔧 **Manuelles Restore**: Button zum Wiederherstellen des Backups mit Sicherheitsabfrage
+- 📄 **Gesicherte Dateien**: config.json, patterns.json, vehicles.csv und alle Ordnerstruktur-Einstellungen
+
+**Backup-Verhalten:**
+- ✅ **Automatisch beim Speichern**: Jede Einstellungsänderung wird gesichert
+- ✅ **Automatisch beim Start**: Fehlendes config.json wird aus Backup wiederhergestellt
+- ✅ **Dreifach-Sicherung**: Programm-Config + Archiv-Config + Backup im data/-Ordner
+- ✅ **Versionsinfo**: Backup enthält Zeitstempel und Programmversion
+
+**Archiv-spezifisches Verhalten:**
+- 🔄 **Auto-Load**: Beim Ändern des root_dir wird `.werkstattarchiv_structure.json` automatisch geladen
+- 💾 **Auto-Sync**: Programm-Einstellungen werden ins Archiv kopiert, wenn keine Config vorhanden
+- 🔀 **Bidirektional**: Änderungen werden IMMER in beide Richtungen synchronisiert
+- 📂 **Archiv-Priorität**: Existierende Archiv-Config hat Vorrang vor Programm-Einstellungen
+
+**Sicherheitsfeatures:**
+- 🔒 **Schutz vor Datenverlust**: Nach Neuinstallation alte Struktur wiederhergestellt
+- 🔒 **Update-sicher**: Alte Einstellungen bleiben bei Updates erhalten
+- 🔒 **Plattformunabhängig**: Funktioniert auf Windows, macOS und Linux
+- 🔒 **Archiv-Unabhängigkeit**: Jedes Archiv kann eigene Ordnerstruktur haben
+
+**Windows-Verbesserungen:**
+- 🪟 **Flexible Start-Scripts**: start.bat funktioniert mit und ohne virtuelle Umgebung
+- 🔄 **Automatischer Fallback**: Nutzt System-Python wenn venv nicht vorhanden
+- ℹ️ **Bessere Fehlermeldungen**: Klare Anweisungen bei fehlendem Python mit Download-Link
+
 ### Version 0.8.6 (13. November 2025)
 
 **Neue Features:**
@@ -223,11 +261,13 @@ python main.py
 - `{auftrag}` - Auftragsnummer
 - `{kfz}` - KFZ-Kennzeichen
 - `{fin}` - Fahrzeug-FIN
+- `{seiten}` - Seitenanzahl
 
 **Verbesserungen:**
 - ⚡ **Performance-Optimierung**: Einstellungen-Tab lädt schneller (`update_idletasks()` nach jedem Frame)
 - 📊 **Log-Rotation**: Automatisch bei 10.000 Zeilen (~2MB)
 - 🔍 **Update-Methode wählbar**: Checkbox zum Umschalten zwischen Commit- und Release-Check
+- 🪟 **Windows-Fehlerbehandlung**: Bessere Prüfung von Schreibrechten und Verzeichnis-Existenz
 
 **Archiv-Konfiguration:**
 - Wird im Archiv-Verzeichnis gespeichert: `[ROOT]/.werkstattarchiv_structure.json`

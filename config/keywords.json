@@ -37,7 +37,7 @@
         "geometrie",
         "fahrwerksvermessung"
       ],
-      "aktiv": false
+      "aktiv": true
     },
     "Diagnose": {
       "beschreibung": "Diagnose und Prüfberichte",

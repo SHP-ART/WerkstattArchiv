@@ -8,6 +8,7 @@ import json
 from typing import Dict, Any
 
 from services.customers import CustomerManager
+from core.config_backup import ConfigBackupManager
 from ui.main_window import create_and_run_gui
 
 
@@ -17,43 +18,64 @@ CONFIG_FILE = "config.json"
 def load_config() -> Dict[str, Any]:
     """
     Lädt die Konfiguration aus config.json.
-    Erstellt eine Standardkonfiguration, falls die Datei nicht existiert.
+    Falls nicht vorhanden: Versucht Restore aus Backup.
+    Erstellt Standardkonfiguration als letzte Option.
     
     Returns:
         Konfigurationsdictionary
     """
-    if not os.path.exists(CONFIG_FILE):
-        print(f"Warnung: {CONFIG_FILE} nicht gefunden. Erstelle Standardkonfiguration.")
-        
-        default_config = {
-            "root_dir": "D:/Scan/Daten",
-            "input_dir": "D:/Scan/Eingang",
-            "unclear_dir": "D:/Scan/Unklar",
-            "customers_file": "D:/Scan/config/kunden.csv",
-            "tesseract_path": None
-        }
-        
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=2, ensure_ascii=False)
-        
-        return default_config
+    backup_manager = ConfigBackupManager()
     
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        return config
-    
-    except Exception as e:
-        print(f"Fehler beim Laden der Konfiguration: {e}")
-        print("Verwende Standardkonfiguration.")
+    # FALL 1: config.json existiert → Lade normal
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            print("✓ Konfiguration aus config.json geladen")
+            return config
         
-        return {
-            "root_dir": "D:/Scan/Daten",
-            "input_dir": "D:/Scan/Eingang",
-            "unclear_dir": "D:/Scan/Unklar",
-            "customers_file": "D:/Scan/config/kunden.csv",
-            "tesseract_path": None
-        }
+        except Exception as e:
+            print(f"⚠️  Fehler beim Laden von config.json: {e}")
+            # Fallthrough zu FALL 2
+    
+    # FALL 2: config.json fehlt → Versuche Backup-Restore
+    print(f"⚠️  {CONFIG_FILE} nicht gefunden.")
+    
+    if backup_manager.backup_exists():
+        print("🔄 Versuche Wiederherstellung aus Backup...")
+        restored_config = backup_manager.restore_backup()
+        
+        if restored_config:
+            print("✅ Konfiguration aus Backup wiederhergestellt!")
+            
+            # Speichere wiederhergestellte Config
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(restored_config, f, indent=2, ensure_ascii=False)
+            
+            return restored_config
+        else:
+            print("⚠️  Backup-Wiederherstellung fehlgeschlagen.")
+            # Fallthrough zu FALL 3
+    else:
+        print("ℹ️  Kein Backup vorhanden.")
+    
+    # FALL 3: Kein Backup → Erstelle Standardkonfiguration
+    print("🆕 Erstelle neue Standardkonfiguration...")
+    
+    default_config = {
+        "root_dir": "D:/Scan/Daten",
+        "input_dir": "D:/Scan/Eingang",
+        "unclear_dir": "D:/Scan/Unklar",
+        "duplicates_dir": "D:/Scan/Duplikate",
+        "customers_file": "D:/Scan/config/kunden.csv",
+        "tesseract_path": None
+    }
+    
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(default_config, f, indent=2, ensure_ascii=False)
+    
+    print("✓ Standardkonfiguration erstellt")
+    return default_config
 
 
 def validate_config(config: Dict[str, Any]) -> bool:

@@ -35,3 +35,69 @@
 [2025-11-13 05:17:37] INFO     | Profil 'Legacy-Kompatibel' geladen
 [2025-11-13 05:17:44] INFO     | Profil 'Chronologisch' geladen
 [2025-11-13 05:17:52] INFO     | Profil 'Mit Kundennummer im Dateinamen' geladen
+[2025-11-14 05:03:31] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:03:31] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:03:38] INFO     | Log-System gestartet
+[2025-11-14 05:07:38] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:07:39] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:07:41] INFO     | Anwendung wird beendet
+[2025-11-14 05:07:46] INFO     | Log-System gestartet
+[2025-11-14 05:10:28] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:10:28] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:10:34] INFO     | Log-System gestartet
+[2025-11-14 05:12:07] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:12:08] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:12:14] INFO     | Log-System gestartet
+[2025-11-14 05:14:14] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:14:14] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:14:21] INFO     | Log-System gestartet
+[2025-11-14 05:17:00] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:17:00] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:17:01] INFO     | Log-System gestartet
+[2025-11-14 05:17:06] INFO     | Anwendung wird beendet
+[2025-11-14 05:18:06] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:18:06] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:18:08] INFO     | Log-System gestartet
+[2025-11-14 05:21:59] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:22:00] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:24:41] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:24:41] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:24:43] INFO     | Log-System gestartet
+[2025-11-14 05:26:19] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:26:20] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:26:21] INFO     | Log-System gestartet
+[2025-11-14 05:28:56] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:28:56] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:28:58] INFO     | Log-System gestartet
+[2025-11-14 05:37:10] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:37:10] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:37:11] INFO     | Log-System gestartet
+[2025-11-14 05:40:30] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:40:30] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:40:32] INFO     | Log-System gestartet
+[2025-11-14 05:42:46] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:42:47] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:42:48] INFO     | Log-System gestartet
+[2025-11-14 05:43:32] INFO     | Anwendung wird beendet
+[2025-11-14 05:44:16] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:44:17] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:44:18] INFO     | Log-System gestartet
+[2025-11-14 05:46:20] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:46:20] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:46:22] INFO     | Log-System gestartet
+[2025-11-14 05:47:33] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:47:33] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:47:35] INFO     | Log-System gestartet
+[2025-11-14 05:48:37] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:48:37] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:48:38] INFO     | Log-System gestartet
+[2025-11-14 05:50:05] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:50:05] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:50:06] INFO     | Log-System gestartet
+[2025-11-14 05:51:15] INFO     | Schlagwort-Kategorie 'Achsvermessung' aktiviert
+[2025-11-14 05:51:17] INFO     | Schlagwort-Kategorie 'Achsvermessung' deaktiviert
+[2025-11-14 05:51:18] INFO     | Schlagwort-Kategorie 'Achsvermessung' aktiviert
+[2025-11-14 05:51:20] INFO     | Konfigurationsdatei geöffnet | Detail: config/keywords.json
+[2025-11-14 05:53:30] INFO     | Erstelle Einstellungen-Tab
+[2025-11-14 05:53:30] SUCCESS  | Einstellungen-Tab erstellt (5 Pfad-Felder)
+[2025-11-14 05:53:32] INFO     | Log-System gestartet

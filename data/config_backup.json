@@ -1,0 +1,38 @@
+{
+  "timestamp": "2025-11-14T04:53:48.044449",
+  "version": "0.8.6",
+  "config": {
+    "root_dir": "/test/path",
+    "input_dir": "/test/eingang",
+    "folder_structure": {
+      "folder_template": "{kunde}/{jahr}",
+      "filename_template": "{datum}_{typ}.pdf"
+    }
+  },
+  "files": {
+    "config.json": {
+      "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Daten",
+      "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
+      "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
+      "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
+      "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
+      "tesseract_path": null
+    },
+    "patterns.json": {
+      "kunden_nr": "(?:Kunden[- ]?Nr\\.?|Kundennummer|Kunde)[:\\s]*(\\d{5,6})",
+      "auftrag_nr": "(?:Auftrags[- ]?Nr\\.?|Auftragsnummer|Auftrag)[:\\s]*(\\d{5,7})",
+      "datum": "(?:Datum|vom|am)[:\\s]*(\\d{1,2}[./]\\d{1,2}[./]\\d{2,4})",
+      "fin": "\\b([A-HJ-NPR-Z0-9]{17})\\b",
+      "kennzeichen": "\\b([A-ZÄÖÜ]{1,3}[-\\s]?[A-ZÄÖÜ]{1,2}[-\\s]?\\d{1,4}[EH]?)\\b",
+      "kunden_name": "(?:Kunde|Name|Auftraggeber)[:\\s]+([A-ZÄÖÜ][a-zäöüß]+(?:\\s+[A-ZÄÖÜ][a-zäöüß]+)*)",
+      "plz": "\\b(\\d{5})\\b",
+      "strasse": "([A-ZÄÖÜ][a-zäöüß]+(?:straße|str\\.|weg|platz|allee))\\s+(\\d+[a-z]?)",
+      "rechnung": "Rechnung",
+      "kva": "(?:Kostenvoranschlag|KVA)",
+      "auftrag": "Auftrag",
+      "hu": "(?:HU|Hauptuntersuchung)",
+      "garantie": "Garantie"
+    },
+    "data/vehicles.csv": "fin,kennzeichen,kunden_nr,marke,modell,erstzulassung,letzte_aktualisierung\nVR7BCZKXCME033281,SFB-KI 23E,28307,Citroën,C4 ELEC SHINE 136,,2025-11-11 20:07:21\n"
+  }
+}
