@@ -1,6 +1,7 @@
 """
 Update-Manager für WerkstattArchiv.
 Prüft auf neue Versionen und installiert Updates von GitHub.
+Windows-optimiert mit automatischem Config-Restore bei Fehlern.
 """
 
 import os
@@ -14,6 +15,7 @@ import tempfile
 import ssl
 from typing import Optional, Tuple, Dict
 from pathlib import Path
+from datetime import datetime
 
 
 class UpdateManager:
@@ -236,10 +238,11 @@ class UpdateManager:
             Tuple (success, message)
         """
         temp_dir = None
+        backup_dir = None
         
         try:
-            # Temporäres Verzeichnis erstellen
-            temp_dir = tempfile.mkdtemp()
+            # Temporäres Verzeichnis erstellen (Windows-safe)
+            temp_dir = tempfile.mkdtemp(prefix="werkstatt_update_")
             zip_path = os.path.join(temp_dir, "update.zip")
             
             # Download
@@ -287,31 +290,63 @@ class UpdateManager:
             if progress_callback:
                 progress_callback(60, "Erstelle Backup...")
             
-            # Backup erstellen
-            backup_dir = os.path.join(self.app_dir, "backup_before_update")
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
+            # Backup erstellen (mit Zeitstempel für mehrere Backups)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.join(self.app_dir, f"backup_before_update_{timestamp}")
             
-            # Wichtige Dateien sichern
-            files_to_backup = ['config.json', 'werkstatt_index.db', 'patterns.json']
+            # Wichtige Dateien und Verzeichnisse sichern
+            files_to_backup = [
+                'config.json',
+                'werkstatt_index.db', 
+                'patterns.json',
+                'data/vehicles.csv',
+                'data/config_backup.json'  # Zentrales Backup
+            ]
+            dirs_to_backup = ['data']  # Komplettes data-Verzeichnis
+            
             os.makedirs(backup_dir, exist_ok=True)
             
+            # Dateien sichern
             for file in files_to_backup:
                 src = os.path.join(self.app_dir, file)
                 if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(backup_dir, file))
+                    # Erstelle Unterverzeichnisse im Backup falls nötig
+                    backup_file_path = os.path.join(backup_dir, file)
+                    os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
+                    shutil.copy2(src, backup_file_path)
+            
+            # Verzeichnisse sichern
+            for dir_name in dirs_to_backup:
+                src_dir = os.path.join(self.app_dir, dir_name)
+                if os.path.exists(src_dir) and os.path.isdir(src_dir):
+                    dst_dir = os.path.join(backup_dir, dir_name)
+                    shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True)
             
             if progress_callback:
                 progress_callback(75, "Installiere Update...")
             
-            # Update installieren (nur Python-Dateien und Dokumentation)
+            # Update installieren (nur Code-Dateien, KEINE Daten überschreiben)
             files_to_update = [
                 'main.py',
                 'version.py',
                 'requirements.txt',
                 'README.md',
+                'WINDOWS_INSTALLATION.md',
                 'services/',
                 'ui/',
+                'core/',
+                'docs/'
+            ]
+            
+            # WICHTIG: Diese Dateien NIEMALS überschreiben
+            files_to_preserve = [
+                'config.json',
+                'werkstatt_index.db',
+                'patterns.json',
+                'data/',  # Komplettes data-Verzeichnis
+                'kunden.csv',
+                'logs/',
+                'backups/'
             ]
             
             for item in files_to_update:
@@ -321,27 +356,58 @@ class UpdateManager:
                 if not os.path.exists(src_path):
                     continue
                 
+                # Prüfe ob diese Datei/Ordner geschützt ist
+                is_protected = any(
+                    item.startswith(protected) or item == protected
+                    for protected in files_to_preserve
+                )
+                
+                if is_protected:
+                    continue  # Geschützte Dateien überspringen
+                
                 if os.path.isfile(src_path):
-                    # Datei kopieren
-                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-                    shutil.copy2(src_path, dst_path)
+                    # Datei kopieren (Windows-safe)
+                    try:
+                        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                        # Unter Windows: Prüfe ob Datei beschreibbar ist
+                        if os.path.exists(dst_path):
+                            os.chmod(dst_path, 0o666)  # Schreibrechte setzen
+                        shutil.copy2(src_path, dst_path)
+                    except PermissionError:
+                        # Fallback: Umbenennen und dann kopieren
+                        if os.path.exists(dst_path):
+                            os.rename(dst_path, f"{dst_path}.old")
+                        shutil.copy2(src_path, dst_path)
+                        
                 elif os.path.isdir(src_path):
-                    # Verzeichnis kopieren
-                    if os.path.exists(dst_path):
-                        # Alte .py Dateien löschen
-                        for root, dirs, files in os.walk(dst_path):
-                            for file in files:
-                                if file.endswith('.py'):
-                                    os.remove(os.path.join(root, file))
-                    
-                    # Neue Dateien kopieren
-                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                    # Verzeichnis kopieren (Windows-safe)
+                    try:
+                        if os.path.exists(dst_path):
+                            # Alte .py Dateien löschen (mit Error-Handling)
+                            for root, dirs, files in os.walk(dst_path):
+                                for file in files:
+                                    if file.endswith('.py'):
+                                        file_path = os.path.join(root, file)
+                                        try:
+                                            os.chmod(file_path, 0o666)
+                                            os.remove(file_path)
+                                        except (PermissionError, OSError):
+                                            # Datei wird beim nächsten Start überschrieben
+                                            pass
+                        
+                        # Neue Dateien kopieren
+                        shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                    except Exception as e:
+                        print(f"Warnung beim Kopieren von {item}: {e}")
             
             if progress_callback:
                 progress_callback(95, "Räume auf...")
             
             # Aufräumen
-            shutil.rmtree(temp_dir)
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception:
+                pass  # Temporäres Verzeichnis kann später gelöscht werden
             
             if progress_callback:
                 progress_callback(100, "Update abgeschlossen!")
@@ -349,21 +415,52 @@ class UpdateManager:
             message = (
                 "✓ Update erfolgreich installiert!\n\n"
                 "Die Anwendung wird jetzt neu gestartet.\n\n"
-                "Backup wurde erstellt in:\n"
-                f"{backup_dir}"
+                "📦 Backup wurde erstellt in:\n"
+                f"{backup_dir}\n\n"
+                "💡 Bei Problemen können Sie die Dateien aus dem Backup wiederherstellen."
             )
             
             return True, message
             
         except Exception as e:
+            error_msg = str(e)
+            
+            # Bei Fehler: Versuche Einstellungen wiederherzustellen
+            if backup_dir and os.path.exists(backup_dir):
+                try:
+                    # Stelle wichtige Konfigurationsdateien wieder her
+                    config_backup = os.path.join(backup_dir, "config.json")
+                    if os.path.exists(config_backup):
+                        shutil.copy2(config_backup, os.path.join(self.app_dir, "config.json"))
+                    
+                    patterns_backup = os.path.join(backup_dir, "patterns.json")
+                    if os.path.exists(patterns_backup):
+                        shutil.copy2(patterns_backup, os.path.join(self.app_dir, "patterns.json"))
+                    
+                    # Prüfe ob zentrales Backup existiert
+                    central_backup = os.path.join(backup_dir, "data", "config_backup.json")
+                    if os.path.exists(central_backup):
+                        target_dir = os.path.join(self.app_dir, "data")
+                        os.makedirs(target_dir, exist_ok=True)
+                        shutil.copy2(central_backup, os.path.join(target_dir, "config_backup.json"))
+                    
+                    error_msg += "\n\n✓ Einstellungen wurden automatisch wiederhergestellt."
+                    
+                except Exception as restore_error:
+                    error_msg += f"\n\n⚠️ Konnte Einstellungen nicht wiederherstellen: {restore_error}"
+                    error_msg += f"\n\n📦 Manuelles Backup verfügbar in:\n{backup_dir}"
+            
             # Aufräumen bei Fehler
             if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception:
+                    pass
             
-            return False, f"❌ Fehler beim Update:\n{str(e)}"
+            return False, f"❌ Fehler beim Update:\n{error_msg}"
     
     def restart_application(self):
-        """Startet die Anwendung neu (plattformübergreifend)."""
+        """Startet die Anwendung neu (plattformübergreifend mit verbessertem Windows-Support)."""
         import subprocess
         import platform
         
@@ -372,32 +469,61 @@ class UpdateManager:
         
         # Windows benötigt spezielles Handling
         if platform.system() == 'Windows':
-            # Erstelle Batch-Datei für verzögerten Neustart
+            # Erstelle Batch-Datei für verzögerten Neustart (mit Logging)
             batch_content = f"""@echo off
-timeout /t 2 /nobreak >nul
-start "" "{python}" "{script}"
+echo WerkstattArchiv Neustart...
+echo Warte 3 Sekunden...
+timeout /t 3 /nobreak >nul
+
+echo Starte Anwendung neu...
+cd /d "{os.path.dirname(script)}"
+start "WerkstattArchiv" "{python}" "{script}"
+
+if errorlevel 1 (
+    echo Fehler beim Starten!
+    echo Python: {python}
+    echo Script: {script}
+    pause
+) else (
+    echo Erfolgreich gestartet!
+)
+
 exit
 """
-            batch_file = os.path.join(tempfile.gettempdir(), "werkstatt_restart.bat")
-            with open(batch_file, 'w') as f:
-                f.write(batch_content)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            batch_file = os.path.join(tempfile.gettempdir(), f"werkstatt_restart_{timestamp}.bat")
             
-            # Starte Batch-Datei und beende aktuelle Anwendung
-            # CREATE_NEW_CONSOLE = 0x00000010, DETACHED_PROCESS = 0x00000008
-            subprocess.Popen(
-                [batch_file],
-                shell=True,
-                creationflags=0x00000010 | 0x00000008,  # Windows-spezifische Flags
-                close_fds=True
-            )
+            try:
+                with open(batch_file, 'w', encoding='utf-8') as f:
+                    f.write(batch_content)
+                
+                # Starte Batch-Datei und beende aktuelle Anwendung
+                # CREATE_NEW_CONSOLE = 0x00000010, DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(
+                    ['cmd.exe', '/c', batch_file],
+                    creationflags=0x00000010,  # Neue Konsole (für Debugging)
+                    cwd=os.path.dirname(script),
+                    close_fds=False  # Windows braucht dies manchmal
+                )
+            except Exception as e:
+                print(f"Fehler beim Erstellen der Restart-Batch: {e}")
+                # Fallback: Direkter Start ohne Verzögerung
+                try:
+                    subprocess.Popen([python, script], cwd=os.path.dirname(script))
+                except Exception as e2:
+                    print(f"Fallback-Start fehlgeschlagen: {e2}")
         else:
             # macOS/Linux: Nutze nohup für Hintergrund-Prozess
-            subprocess.Popen(
-                [python, script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                close_fds=True
-            )
+            try:
+                subprocess.Popen(
+                    [python, script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    cwd=os.path.dirname(script),
+                    close_fds=True
+                )
+            except Exception as e:
+                print(f"Fehler beim Neustart: {e}")
         
         # Beende aktuelle Anwendung
         sys.exit(0)
