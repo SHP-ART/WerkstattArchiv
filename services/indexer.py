@@ -7,6 +7,7 @@ import sqlite3
 import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from functools import lru_cache
 
 
 DB_FILE = "werkstatt_index.db"
@@ -24,6 +25,8 @@ class DocumentIndex:
         """
         self.db_path = db_path
         self._connection_timeout = 10  # Timeout für DB-Locks (verhindert Deadlocks)
+        # Statistics Lazy-Loading Cache
+        self._statistics_cache: Optional[Dict[str, Any]] = None
         self._init_database()
 
     def _init_database(self) -> None:
@@ -179,6 +182,42 @@ class DocumentIndex:
         conn.commit()
         conn.close()
     
+    def _convert_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """
+        Konvertiert eine SQLite Row zu einem Dictionary (optimiert).
+        Effiziente Variante statt manuelles Dict mit vielen .keys() Checks.
+
+        Args:
+            row: sqlite3.Row Objekt
+
+        Returns:
+            Dictionary mit allen Dokumenten-Feldern
+        """
+        # Direct dict() conversion (fast) statt manuelles Dict-Building
+        result = dict(row)
+
+        # Nur für Felder die Optional sein können, defaults setzen
+        optional_fields = {
+            "auftragsdatum": None,
+            "fin": None,
+            "kennzeichen": None,
+            "kilometerstand": None,
+            "is_legacy": False,
+            "match_reason": None,
+            "created_at": None,
+            "last_update": None
+        }
+
+        for field, default in optional_fields.items():
+            if field not in result or result[field] is None:
+                result[field] = default
+
+        # Convert is_legacy to bool wenn nötig
+        if "is_legacy" in result:
+            result["is_legacy"] = bool(result["is_legacy"])
+
+        return result
+
     def _migrate_database(self, cursor: sqlite3.Cursor) -> None:
         """
         Migriert bestehende Datenbank auf neues Schema.
@@ -323,7 +362,10 @@ class DocumentIndex:
         doc_id = cursor.lastrowid if cursor.lastrowid else 0
         conn.commit()
         conn.close()
-        
+
+        # Invalidiere Statistics-Cache (Daten haben sich geändert)
+        self.invalidate_statistics_cache()
+
         return doc_id
     
     def update_file_path(self, doc_id: int, new_path: str) -> bool:
@@ -421,44 +463,66 @@ class DocumentIndex:
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
-        results = []
-        for row in rows:
-            results.append({
-                "id": row["id"],
-                "dateiname": row["dateiname"],
-                "original_pfad": row["original_pfad"],
-                "ziel_pfad": row["ziel_pfad"],
-                "auftrag_nr": row["auftrag_nr"],
-                "auftragsdatum": row["auftragsdatum"] if "auftragsdatum" in row.keys() else None,
-                "dokument_typ": row["dokument_typ"],
-                "jahr": row["jahr"],
-                "kunden_nr": row["kunden_nr"],
-                "kunden_name": row["kunden_name"],
-                "fin": row["fin"] if "fin" in row.keys() else None,
-                "kennzeichen": row["kennzeichen"] if "kennzeichen" in row.keys() else None,
-                "kilometerstand": row["kilometerstand"] if "kilometerstand" in row.keys() else None,
-                "is_legacy": bool(row["is_legacy"]) if "is_legacy" in row.keys() else False,
-                "match_reason": row["match_reason"] if "match_reason" in row.keys() else None,
-                "confidence": row["confidence"],
-                "status": row["status"],
-                "hinweis": row["hinweis"],
-                "verarbeitet_am": row["verarbeitet_am"],
-                "created_at": row["created_at"] if "created_at" in row.keys() else None,
-                "last_update": row["last_update"] if "last_update" in row.keys() else None,
-            })
-        
+
+        # Optimiert: Nutze Helper-Methode statt manuelles Dict-Building
+        results = [self._convert_row_to_dict(row) for row in rows]
+
         conn.close()
         return results
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_quick_statistics(self) -> Dict[str, Any]:
         """
-        Gibt Statistiken über die indexierten Dokumente zurück.
-        Optimiert: Alle Queries in einem Durchgang für maximale Performance.
+        Gibt schnelle Basic-Statistiken zurück (SEHR SCHNELL).
+        Ideal für schnelle UI-Updates ohne lange Wartezeit.
+        Nur COUNT(*) ohne GROUP BY.
 
         Returns:
-            Dictionary mit Statistiken
+            Dictionary mit Basis-Statistiken
         """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Ein einziges Query für alle schnellen Stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN is_legacy = 1 THEN 1 END) as legacy_count,
+                COUNT(CASE WHEN status = 'unclear' THEN 1 END) as unclear_count,
+                (SELECT COUNT(*) FROM unclear_legacy WHERE status = 'offen') as unclear_legacy_count,
+                COUNT(DISTINCT CASE WHEN kunden_nr IS NOT NULL THEN kunden_nr END) as unique_customers,
+                COALESCE(AVG(CASE WHEN confidence IS NOT NULL THEN confidence END), 0) as avg_confidence
+            FROM dokumente
+        """)
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return {
+            "total": row[0] or 0,
+            "legacy_count": row[1] or 0,
+            "unclear_count": row[2] or 0,
+            "unclear_legacy_count": row[3] or 0,
+            "unique_customers": row[4] or 0,
+            "avg_confidence": round(row[5] or 0, 2),
+            "_cached": False,  # Flag dass dies Quick-Stats sind
+        }
+
+    def get_statistics(self, use_cache: bool = True) -> Dict[str, Any]:
+        """
+        Gibt DETAILLIERTE Statistiken mit GROUP BY zurück (mit Lazy-Loading Cache).
+        Optimiert: Alle Queries in einem Durchgang für maximale Performance.
+        ACHTUNG: Diese Methode ist teuer! Verwende get_quick_statistics() für schnelle Updates.
+
+        Args:
+            use_cache: Nutze gecachte Statistiken wenn verfügbar (Standard: True)
+
+        Returns:
+            Dictionary mit detaillierten Statistiken
+        """
+        # Lazy-Loading: Cache zurückgeben wenn vorhanden
+        if use_cache and self._statistics_cache is not None:
+            return self._statistics_cache
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -515,7 +579,8 @@ class DocumentIndex:
 
         conn.close()
 
-        return {
+        # Speichere im Cache
+        self._statistics_cache = {
             "total": total,
             "by_status": status_counts,
             "by_type": type_counts,
@@ -525,7 +590,14 @@ class DocumentIndex:
             "unique_customers": unique_customers,
             "unique_vehicles": unique_vehicles,
             "avg_confidence": round(avg_confidence, 2) if avg_confidence else 0,
+            "_cached": True,  # Flag dass dies gecachte Stats sind
         }
+
+        return self._statistics_cache
+
+    def invalidate_statistics_cache(self):
+        """Invalidiert den Statistics-Cache (z.B. nach neuen Dokumenten)."""
+        self._statistics_cache = None
     
     def get_all_document_types(self) -> List[str]:
         """Gibt alle eindeutigen Dokumenttypen zurück."""
