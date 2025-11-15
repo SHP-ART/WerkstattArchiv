@@ -158,6 +158,17 @@ class DocumentIndex:
             ON dokumente(verarbeitet_am DESC)
         """)
 
+        # Indexes für LIKE Suchen (Search-Performance)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kunden_name
+            ON dokumente(kunden_name)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dateiname
+            ON dokumente(dateiname)
+        """)
+
         # ===== INDEXES für unclear_legacy TABELLE =====
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_status
