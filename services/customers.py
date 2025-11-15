@@ -5,7 +5,7 @@ Lädt und verwaltet die Kundendatenbank aus einer CSV-Datei.
 
 import csv
 import os
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from dataclasses import dataclass
 from functools import lru_cache
 
