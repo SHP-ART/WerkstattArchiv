@@ -6,7 +6,7 @@ und das Umbenennen bereits archivierter Dateien.
 
 import os
 import re
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from pathlib import Path
 
 
