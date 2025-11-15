@@ -367,7 +367,69 @@ class DocumentIndex:
         self.invalidate_statistics_cache()
 
         return doc_id
-    
+
+    def add_documents_batch(self, documents: List[tuple]) -> List[int]:
+        """
+        Fügt mehrere Dokumente in einem Batch ein (Feature 12: Batch Database Inserts).
+        Viel schneller als einzelne add_document() Aufrufe, da nur EINE Verbindung verwendet wird.
+
+        Args:
+            documents: Liste von Tuples (original_path, target_path, metadata, status)
+                     wo metadata ein Dict mit Dokument-Metadaten ist
+
+        Returns:
+            Liste von eingefügten Document-IDs
+        """
+        if not documents:
+            return []
+
+        conn = sqlite3.connect(self.db_path, timeout=self._connection_timeout, check_same_thread=False)
+        cursor = conn.cursor()
+
+        inserted_ids = []
+        try:
+            for original_path, target_path, metadata, status in documents:
+                cursor.execute("""
+                    INSERT INTO dokumente
+                    (dateiname, original_pfad, ziel_pfad,
+                     auftrag_nr, auftragsdatum, dokument_typ, jahr,
+                     kunden_nr, kunden_name,
+                     fin, kennzeichen, kilometerstand,
+                     is_legacy, match_reason,
+                     confidence, status, hinweis,
+                     created_at, last_update)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (
+                    os.path.basename(target_path),
+                    original_path,
+                    target_path,
+                    metadata.get("auftrag_nr"),
+                    metadata.get("auftragsdatum"),
+                    metadata.get("dokument_typ"),
+                    metadata.get("jahr"),
+                    metadata.get("kunden_nr"),
+                    metadata.get("kunden_name"),
+                    metadata.get("fin"),
+                    metadata.get("kennzeichen"),
+                    metadata.get("kilometerstand"),
+                    1 if metadata.get("is_legacy") else 0,
+                    metadata.get("legacy_match_reason") or metadata.get("match_reason"),
+                    metadata.get("confidence"),
+                    status,
+                    metadata.get("hinweis")
+                ))
+                inserted_ids.append(cursor.lastrowid if cursor.lastrowid else 0)
+
+            # SINGLE COMMIT für alle Inserts - deutlich schneller!
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Invalidiere Statistics-Cache (Daten haben sich geändert)
+        self.invalidate_statistics_cache()
+
+        return inserted_ids
+
     def update_file_path(self, doc_id: int, new_path: str) -> bool:
         """
         Aktualisiert den Dateipfad eines Dokuments.
