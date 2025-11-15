@@ -294,17 +294,22 @@ class MainWindow(ctk.CTk):
         self.update_idletasks()
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten - SCHNELL und dann ASYNC rendering."""
+        """Initialisiert die GUI-Komponenten - MIT PERFORMANCE-LOGGING."""
+        start_total = time.time()
         self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
 
         # Tabview erstellen OHNE command (wird später gesetzt!)
+        start = time.time()
         self.tabview = ctk.CTkTabview(self)
+        print(f"⏱️  TabView erstellt: {(time.time() - start) * 1000:.1f}ms")
 
         # KRITISCH: Tabview SOFORT packen (muss sichtbar sein für Rendering!)
         # Ladebildschirm liegt mit place() darüber → nicht sichtbar für User
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Tabs hinzufügen
+        # Tabs hinzufügen - Willkommen ZUERST!
+        start = time.time()
+        self.tabview.add("Willkommen")
         self.tabview.add("Einstellungen")
         self.tabview.add("Verarbeitung")
         self.tabview.add("Suche")
@@ -314,6 +319,7 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Regex-Patterns")
         self.tabview.add("System")
         self.tabview.add("Logs")
+        print(f"⏱️  Tabs hinzugefügt: {(time.time() - start) * 1000:.1f}ms")
 
         # Ladebildschirm ÜBER Tabview bringen
         self.loading_frame.lift()
@@ -321,52 +327,76 @@ class MainWindow(ctk.CTk):
         # WICHTIG: Tab-Wechsel während des Ladens blockieren
         self.gui_ready = False
 
-        # NEUE STRATEGIE: Alle Tabs SCHNELL erstellen (keine update_idletasks!)
-        self.update_loading_progress(0.1, "⚙️  Erstelle Einstellungen...", "")
+        # NEUE STRATEGIE: Willkommens-Tab SOFORT, Rest im Hintergrund
+        self.update_loading_progress(0.1, "👋 Erstelle Willkommen...", "")
+        start = time.time()
+        self.create_welcome_tab()
+        self.tabs_created["Willkommen"] = True
+        print(f"⏱️  Welcome-Tab: {(time.time() - start) * 1000:.1f}ms")
+
+        self.update_loading_progress(0.2, "⚙️  Erstelle Einstellungen...", "")
+        start = time.time()
         self.create_settings_tab()
         self.tabs_created["Einstellungen"] = True
+        print(f"⏱️  Settings-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.2, "📁 Erstelle Verarbeitung...", "")
+        self.update_loading_progress(0.3, "📁 Erstelle Verarbeitung...", "")
+        start = time.time()
         self.create_processing_tab()
         self.tabs_created["Verarbeitung"] = True
+        print(f"⏱️  Processing-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.3, "🔍 Erstelle Suche...", "")
+        self.update_loading_progress(0.4, "🔍 Erstelle Suche...", "")
+        start = time.time()
         self.create_search_tab()
         self.tabs_created["Suche"] = True
+        print(f"⏱️  Search-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.4, "⚠️  Erstelle Unklare Dokumente...", "")
+        self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "")
+        start = time.time()
         self.create_unclear_tab()
         self.tabs_created["Unklare Dokumente"] = True
+        print(f"⏱️  Unclear-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.5, "📜 Erstelle Legacy-Aufträge...", "")
+        self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "")
+        start = time.time()
         self.create_unclear_legacy_tab()
         self.tabs_created["Unklare Legacy-Aufträge"] = True
+        print(f"⏱️  Legacy-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.6, "👥 Erstelle Virtuelle Kunden...", "")
+        self.update_loading_progress(0.7, "👥 Erstelle Virtuelle Kunden...", "")
+        start = time.time()
         self.create_virtual_customers_tab()
         self.tabs_created["Virtuelle Kunden"] = True
+        print(f"⏱️  Virtual-Customers-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.7, "🔤 Erstelle Regex-Patterns...", "")
+        self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "")
+        start = time.time()
         self.create_patterns_tab()
         self.tabs_created["Regex-Patterns"] = True
+        print(f"⏱️  Patterns-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.8, "🔧 Erstelle System...", "")
+        self.update_loading_progress(0.9, "🔧 Erstelle System...", "")
+        start = time.time()
         self.create_system_tab()
         self.tabs_created["System"] = True
+        print(f"⏱️  System-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.9, "📋 Erstelle Logs...", "")
+        self.update_loading_progress(0.95, "📋 Erstelle Logs...", "")
+        start = time.time()
         self.create_logs_tab()
         self.tabs_created["Logs"] = True
+        print(f"⏱️  Logs-Tab: {(time.time() - start) * 1000:.1f}ms")
 
         # Tabs erstellt - zeige GUI DIREKT! (Daten folgen asynchron)
         self.update_loading_progress(1.0, "✅ Fertig!", "")
-        print("✓ Alle Tabs erstellt - zeige GUI")
+        print(f"✓ Alle Tabs erstellt in {(time.time() - start_total) * 1000:.0f}ms")
 
-        # GUI zeigen - EINFACH und DIREKT (KEINE blockierenden Datenbank-Queries!)
+        # GUI SOFORT zeigen mit Willkommens-Tab!
         self._show_gui()
-
-        # Lade Daten ASYNCHRON im Hintergrund (nicht blockierend!)
-        self.after(100, self._load_startup_data_async)
+        
+        # PRE-RENDERING im Hintergrund (User sieht nichts davon)
+        self.after(100, self._prerender_all_tabs)
 
     def _show_gui(self):
         """Macht die GUI nach dem Laden sichtbar."""
@@ -375,18 +405,19 @@ class MainWindow(ctk.CTk):
         # Entferne Ladebildschirm SOFORT
         self.loading_frame.place_forget()
 
-        # Setze Standard-Tab
-        self.tabview.set("Verarbeitung")
+        # Setze Willkommens-Tab (ist sofort fertig!)
+        self.tabview.set("Willkommen")
 
-        # Schnelles Update (NICHT blockierend!)
+        # MEHRFACHES Update um sicherzustellen dass alles gerendert ist
+        self.update_idletasks()
+        self.update()
         self.update_idletasks()
 
         # GUI ist SOFORT bereit!
         self.gui_ready = True
 
-        # Commands aktivieren - aber on_tab_change macht nichts (pass)
-        # Dies ist nur für zukünftige Erweiterungen
-        self.tabview.configure(command=self.on_tab_change)
+        # Commands SOFORT aktivieren (Event-System ist jetzt stabil!)
+        self.tabview.configure(command=self._on_tab_change_wrapper)
 
         # Aktiviere Vorlagen-Selector Command
         if hasattr(self, 'vorlage_selector'):
@@ -394,11 +425,87 @@ class MainWindow(ctk.CTk):
 
         print("✓ GUI bereit - Tab-Wechsel sofort möglich!")
 
+    def _prerender_all_tabs(self):
+        """Lädt Daten und triggert Tab-Rendering im Hintergrund."""
+        start = time.time()
+        
+        # Lade Daten
+        self._load_startup_data_sync()
+        
+        # Pre-Render ALLE Tabs durch _update_idletasks für jeden Tab-Frame
+        # (CustomTkinter cached dann das Layout ohne sichtbaren Tab-Wechsel)
+        for tab_name in ["Einstellungen", "Verarbeitung", "Suche", 
+                         "Unklare Dokumente", "Unklare Legacy-Aufträge", 
+                         "Virtuelle Kunden", "Regex-Patterns", "System", "Logs"]:
+            try:
+                # Hole Tab-Frame und force Layout-Berechnung
+                tab_frame = self.tabview.tab(tab_name)
+                tab_frame.update_idletasks()
+            except Exception as e:
+                print(f"⚠️ Pre-Rendering für '{tab_name}' fehlgeschlagen: {e}")
+        
+        elapsed = (time.time() - start) * 1000
+        print(f"✓ Hintergrund-Daten geladen in {elapsed:.0f}ms")
+
+    def _on_tab_change_wrapper(self):
+        """Wrapper für Tab-Wechsel mit VOLLSTÄNDIGEM Performance-Logging."""
+        start_total = time.time()
+        
+        # User-Callback ausführen
+        self.on_tab_change()
+        
+        # WICHTIG: Warte bis CustomTkinter fertig gerendert hat
+        self.update_idletasks()
+        
+        # Gesamtzeit messen (inkl. Rendering!)
+        elapsed_total = (time.time() - start_total) * 1000
+        current_tab = self.tabview.get()
+        print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms")
+
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
         # NICHTS TUN - CustomTkinter rendert automatisch!
-        # Kein update(), kein update_idletasks() → maximale Performance!
         pass
+
+    def _load_startup_data_sync(self):
+        """Lädt alle Startup-Daten SYNCHRON (während Ladeanimation läuft)."""
+        print("📦 Lade Startup-Daten...")
+        start = time.time()
+        
+        try:
+            # 1. Such-Daten laden
+            try:
+                doc_types = ["Alle"] + self.document_index.get_all_document_types()
+                years = ["Alle"] + [str(y) for y in self.document_index.get_all_years()]
+                self._update_search_dropdowns(doc_types, years)
+                self.tabs_data_loaded["Suche"] = True
+            except Exception as e:
+                print(f"Fehler beim Laden der Such-Daten: {e}")
+
+            # 2. Legacy-Einträge laden
+            try:
+                unclear_legacy = self.document_index.get_unclear_legacy_entries()
+                self._update_legacy_entries(unclear_legacy)
+                self.tabs_data_loaded["Unklare Legacy-Aufträge"] = True
+            except Exception as e:
+                print(f"Fehler beim Laden der Legacy-Daten: {e}")
+
+            # 3. Statistiken vorberechnen
+            try:
+                self._preload_statistics()
+            except Exception as e:
+                print(f"Fehler beim Vorladen der Statistiken: {e}")
+
+            # 4. Virtuelle Kunden-Daten laden
+            try:
+                self._preload_virtual_customers()
+            except Exception as e:
+                print(f"Fehler beim Laden der virtuellen Kunden: {e}")
+
+            elapsed = (time.time() - start) * 1000
+            print(f"✓ Startup-Daten geladen in {elapsed:.0f}ms")
+        except Exception as e:
+            print(f"Kritischer Fehler beim Laden von Startup-Daten: {e}")
 
     def _load_startup_data_async(self):
         """Lädt alle Startup-Daten asynchron im Hintergrund (nicht blockierend!)."""
@@ -465,6 +572,96 @@ class MainWindow(ctk.CTk):
                 self._add_legacy_entry_row(doc)
         except Exception as e:
             print(f"Fehler beim Update von Legacy-Einträgen: {e}")
+
+    def create_welcome_tab(self):
+        """Erstellt den Willkommens-Tab."""
+        tab = self.tabview.tab("Willkommen")
+        
+        # Hauptcontainer zentriert
+        container = ctk.CTkFrame(tab, fg_color="transparent")
+        container.pack(expand=True, fill="both", padx=40, pady=40)
+        
+        # Logo/Icon (großes Emoji als Platzhalter)
+        logo_label = ctk.CTkLabel(
+            container,
+            text="📚",
+            font=ctk.CTkFont(size=120)
+        )
+        logo_label.pack(pady=(0, 20))
+        
+        # Titel
+        title = ctk.CTkLabel(
+            container,
+            text="WerkstattArchiv",
+            font=ctk.CTkFont(size=48, weight="bold")
+        )
+        title.pack(pady=(0, 10))
+        
+        # Version
+        version = ctk.CTkLabel(
+            container,
+            text="Version 0.8.7",
+            font=ctk.CTkFont(size=18),
+            text_color="gray"
+        )
+        version.pack(pady=(0, 30))
+        
+        # Beschreibung
+        description = ctk.CTkLabel(
+            container,
+            text="Automatische Verwaltung von Werkstattdokumenten\n\n"
+                 "Wähle einen Tab oben aus, um zu starten:",
+            font=ctk.CTkFont(size=16),
+            justify="center"
+        )
+        description.pack(pady=(0, 30))
+        
+        # Quick-Action Buttons
+        button_frame = ctk.CTkFrame(container, fg_color="transparent")
+        button_frame.pack(pady=10)
+        
+        # Verarbeitung starten
+        btn_processing = ctk.CTkButton(
+            button_frame,
+            text="📁 Dokumente verarbeiten",
+            command=lambda: self.tabview.set("Verarbeitung"),
+            font=ctk.CTkFont(size=16),
+            height=50,
+            width=300
+        )
+        btn_processing.pack(pady=10)
+        
+        # Suche öffnen
+        btn_search = ctk.CTkButton(
+            button_frame,
+            text="🔍 Dokumente suchen",
+            command=lambda: self.tabview.set("Suche"),
+            font=ctk.CTkFont(size=16),
+            height=50,
+            width=300
+        )
+        btn_search.pack(pady=10)
+        
+        # Einstellungen öffnen
+        btn_settings = ctk.CTkButton(
+            button_frame,
+            text="⚙️ Einstellungen",
+            command=lambda: self.tabview.set("Einstellungen"),
+            font=ctk.CTkFont(size=16),
+            height=50,
+            width=300,
+            fg_color="gray40"
+        )
+        btn_settings.pack(pady=10)
+        
+        # Footer
+        footer = ctk.CTkLabel(
+            container,
+            text="© 2024 SHP-ART",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        footer.pack(side="bottom", pady=20)
 
     def create_settings_tab(self):
         """Erstellt den Einstellungen-Tab."""
