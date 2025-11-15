@@ -727,13 +727,13 @@ class MainWindow(ctk.CTk):
                                      font=ctk.CTkFont(size=12, weight="bold"))
         preview_title.pack(anchor="w", padx=5, pady=5)
         
-        self.structure_preview = ctk.CTkTextbox(preview_frame, height=80, 
+        self.structure_preview = ctk.CTkTextbox(preview_frame, height=80,
                                                font=ctk.CTkFont(family="Courier", size=11))
         self.structure_preview.pack(fill="x", padx=5, pady=5)
-        
-        # Initial-Vorschau
-        self.update_structure_preview()
-        
+
+        # Initial-Vorschau (deferred - nicht beim Laden blockieren)
+        self.after(100, self.update_structure_preview)
+
         # Profil-Beschreibung initial setzen
         self.update_profile_description()
     
@@ -747,9 +747,9 @@ class MainWindow(ctk.CTk):
             
             self.filename_template_entry.delete(0, "end")
             self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
-            
-            # Update Vorschau
-            self.update_structure_preview()
+
+            # Update Vorschau (deferred - asynchron aktualisieren)
+            self.after(50, self.update_structure_preview)
             self.update_profile_description()
             self.add_log("INFO", f"Profil '{profile_name}' geladen")
     
@@ -1562,6 +1562,11 @@ class MainWindow(ctk.CTk):
         # Container für unklare Dokumente
         self.unclear_container = ctk.CTkFrame(self.unclear_scroll)
         self.unclear_container.pack(fill="both", expand=True)
+
+        # Pagination für unklare Dokumente (Performance-Optimierung)
+        self.unclear_documents_all = []  # Alle unklaren Dokumente
+        self.unclear_documents_page = 1  # Aktuelle Seite
+        self.unclear_documents_per_page = 20  # 20 pro Seite (statt alle auf einmal)
     
     def create_unclear_legacy_tab(self):
         """Erstellt den Tab für unklare Legacy-Aufträge."""
@@ -1669,15 +1674,15 @@ class MainWindow(ctk.CTk):
                                  font=ctk.CTkFont(size=11), justify="left")
         info_label.pack(padx=10, pady=10)
         
-        # Scrollable Frame für Pattern-Eingaben
-        scroll_frame = ctk.CTkScrollableFrame(tab)
-        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
+        # Tabview für Kategorien (Performance-Optimierung: nur aktiver Tab wird rendert)
+        self.pattern_tabview = ctk.CTkTabview(tab)
+        self.pattern_tabview.pack(fill="both", expand=True, padx=10, pady=10)
+
         # Pattern-Eingabefelder erstellen
         self.pattern_entries = {}
         patterns = self.pattern_manager.get_all_patterns()
         descriptions = self.pattern_manager.get_pattern_descriptions()
-        
+
         # Nach Kategorien gruppieren
         categories = {
             "Stammdaten": ["kunden_nr", "auftrag_nr", "datum", "kunden_name"],
@@ -1685,42 +1690,43 @@ class MainWindow(ctk.CTk):
             "Adressdaten": ["plz", "strasse"],
             "Dokumenttypen": ["rechnung", "kva", "auftrag", "hu", "garantie"]
         }
-        
-        row = 0
+
+        # Erstelle für jede Kategorie einen separaten Tab
         for category, pattern_names in categories.items():
-            # Kategorie-Header
-            cat_label = ctk.CTkLabel(scroll_frame, text=f"▼ {category}",
-                                    font=ctk.CTkFont(size=14, weight="bold"))
-            cat_label.grid(row=row, column=0, columnspan=3, sticky="w", padx=10, pady=(15, 5))
-            row += 1
-            
+            cat_tab = self.pattern_tabview.add(category)
+
+            # Scrollbar für diese Kategorie
+            scroll_frame = ctk.CTkScrollableFrame(cat_tab)
+            scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+            row = 0
             # Pattern in dieser Kategorie
             for name in pattern_names:
                 if name not in patterns:
                     continue
-                
+
                 # Name
                 name_label = ctk.CTkLabel(scroll_frame, text=name,
                                          font=ctk.CTkFont(size=11, weight="bold"),
                                          width=150, anchor="w")
                 name_label.grid(row=row, column=0, padx=10, pady=5, sticky="w")
-                
+
                 # Pattern-Eingabe
                 entry = ctk.CTkEntry(scroll_frame, width=500)
                 entry.insert(0, patterns[name])
                 entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
                 self.pattern_entries[name] = entry
-                
+
                 # Beschreibung
                 desc_label = ctk.CTkLabel(scroll_frame, text=descriptions.get(name, ""),
                                          font=ctk.CTkFont(size=10),
                                          text_color="gray", anchor="w")
                 desc_label.grid(row=row, column=2, padx=10, pady=5, sticky="w")
-                
+
                 row += 1
-        
-        # Grid-Konfiguration
-        scroll_frame.grid_columnconfigure(1, weight=1)
+
+            # Grid-Konfiguration für diese Kategorie
+            scroll_frame.grid_columnconfigure(1, weight=1)
     
     def save_patterns(self):
         """Speichert die Regex-Patterns."""
@@ -2975,21 +2981,38 @@ class MainWindow(ctk.CTk):
                 break
     
     def _update_unclear_tab(self):
-        """Aktualisiert den Tab mit unklaren Dokumenten."""
-        # Alte Widgets entfernen
+        """Aktualisiert den Tab mit unklaren Dokumenten (mit Pagination)."""
+        # Speichere alle Dokumente und zeige erste Seite
+        self.unclear_documents_all = self.unclear_documents.copy()
+        self._show_unclear_page(1)
+
+    def _show_unclear_page(self, page: int):
+        """Zeigt eine bestimmte Seite der unklaren Dokumente mit Pagination-Controls."""
         for widget in self.unclear_container.winfo_children():
             widget.destroy()
-        
-        if not self.unclear_documents:
-            no_docs = ctk.CTkLabel(self.unclear_container, 
-                                  text="Keine unklaren Dokumente", 
+
+        if not self.unclear_documents_all:
+            no_docs = ctk.CTkLabel(self.unclear_container,
+                                  text="Keine unklaren Dokumente",
                                   font=ctk.CTkFont(size=16))
             no_docs.pack(pady=20)
             return
-        
-        # Unklare Dokumente anzeigen
-        for doc in self.unclear_documents:
-            self._add_unclear_document_widget(doc)
+
+        total_results = len(self.unclear_documents_all)
+        total_pages = (total_results + self.unclear_documents_per_page - 1) // self.unclear_documents_per_page
+        page = max(1, min(page, total_pages))
+        self.unclear_documents_page = page
+
+        start_idx = (page - 1) * self.unclear_documents_per_page
+        end_idx = min(start_idx + self.unclear_documents_per_page, total_results)
+
+        # Zeige Dokumente für diese Seite
+        for i in range(start_idx, end_idx):
+            self._add_unclear_document_widget(self.unclear_documents_all[i])
+
+        # Zeige Pagination-Controls wenn mehrere Seiten
+        if total_pages > 1:
+            self._add_unclear_pagination_controls(page, total_pages, total_results)
     
     def _add_unclear_document_widget(self, doc: Dict[str, Any]):
         """Fügt ein Widget für ein unklares Dokument hinzu."""
@@ -3032,8 +3055,41 @@ class MainWindow(ctk.CTk):
                                                  auftrag_entry.get(), typ_entry.get())
         )
         resort_btn.pack(pady=5)
-    
-    def _resort_document(self, doc: Dict[str, Any], kunden_nr: str, 
+
+    def _add_unclear_pagination_controls(self, page: int, total_pages: int, total_results: int):
+        """Fügt Pagination-Controls für unklare Dokumente hinzu."""
+        # Pagination Controls Frame
+        pagination_frame = ctk.CTkFrame(self.unclear_container)
+        pagination_frame.pack(fill="x", padx=10, pady=10)
+
+        # Previous Button
+        prev_btn = ctk.CTkButton(
+            pagination_frame,
+            text="◀ Vorherige",
+            width=100,
+            command=lambda: self._show_unclear_page(page - 1),
+            state="normal" if page > 1 else "disabled"
+        )
+        prev_btn.pack(side="left", padx=5)
+
+        # Page Info
+        page_info = ctk.CTkLabel(
+            pagination_frame,
+            text=f"Seite {page}/{total_pages} ({total_results} Einträge)"
+        )
+        page_info.pack(side="left", padx=20)
+
+        # Next Button
+        next_btn = ctk.CTkButton(
+            pagination_frame,
+            text="Nächste ▶",
+            width=100,
+            command=lambda: self._show_unclear_page(page + 1),
+            state="normal" if page < total_pages else "disabled"
+        )
+        next_btn.pack(side="left", padx=5)
+
+    def _resort_document(self, doc: Dict[str, Any], kunden_nr: str,
                         auftrag_nr: str, dokument_typ: str):
         """Sortiert ein unklares Dokument mit manuellen Daten neu ein."""
         # Aktualisiere Analysedaten
