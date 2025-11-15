@@ -4053,6 +4053,85 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Fehler", message)
     
+    def _show_update_dialog(self, latest_version: str, release_notes: str,
+                           download_url: str, updater):
+        """Zeigt ein ausführliches Update-Dialog mit vollständigen Release Notes."""
+        update_window = ctk.CTkToplevel(self)
+        update_window.title(f"Update auf Version {latest_version}")
+        update_window.geometry("700x500")
+        update_window.attributes("-topmost", True)
+
+        # Header
+        header = ctk.CTkLabel(
+            update_window,
+            text=f"🎉 Neue Version verfügbar: v{latest_version}",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        header.pack(pady=15, padx=15)
+
+        # Versions-Info
+        info_frame = ctk.CTkFrame(update_window, fg_color="transparent")
+        info_frame.pack(pady=10, padx=15, fill="x")
+
+        ctk.CTkLabel(
+            info_frame,
+            text=f"Aktuell: v{self.version}  →  Verfügbar: v{latest_version}",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left")
+
+        # Release Notes Text Widget mit Scrollbar
+        notes_frame = ctk.CTkFrame(update_window)
+        notes_frame.pack(pady=10, padx=15, fill="both", expand=True)
+
+        scrollbar = ctk.CTkScrollbar(notes_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        text_widget = ctk.CTkTextbox(
+            notes_frame,
+            wrap="word",
+            yscrollcommand=scrollbar.set,
+            height=20
+        )
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.configure(command=text_widget.yview)
+
+        # Release Notes einfügen
+        text_widget.insert("0.0", release_notes)
+        text_widget.configure(state="disabled")  # Read-only
+
+        # Buttons
+        button_frame = ctk.CTkFrame(update_window, fg_color="transparent")
+        button_frame.pack(pady=15, padx=15, fill="x")
+
+        def install():
+            update_window.destroy()
+            self._install_update(download_url, updater)
+
+        def cancel():
+            update_window.destroy()
+
+        ctk.CTkButton(
+            button_frame,
+            text="✓ Jetzt aktualisieren",
+            command=install,
+            fg_color="green"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            button_frame,
+            text="✗ Später",
+            command=cancel
+        ).pack(side="left", padx=5)
+
+        # Info-Text
+        info_text = ctk.CTkLabel(
+            button_frame,
+            text="⚠️ Die Anwendung wird neu gestartet",
+            text_color="gray",
+            font=ctk.CTkFont(size=10)
+        )
+        info_text.pack(side="right")
+
     def on_update_method_changed(self):
         """Wird aufgerufen wenn Update-Methode geändert wird."""
         use_commits = self.update_use_commits_var.get()
@@ -4060,24 +4139,31 @@ class MainWindow(ctk.CTk):
         self.add_log("INFO", f"Update-Methode geändert: {method}")
     
     def check_for_updates(self):
-        """Prüft auf neue Versions-Updates von GitHub."""
+        """Prüft auf neue Versions-Updates von GitHub mit besserer Fehlerbehandlung."""
         from services.updater import UpdateManager
-        
+
         self.update_status.configure(text="🔄 Prüfe auf Updates...", text_color="blue")
         self.update()
-        
+
         # In Thread ausführen um GUI nicht zu blockieren
         def check_thread():
-            updater = UpdateManager(self.version)
-            # Setze Update-Methode
-            updater.use_commit_check = self.update_use_commits_var.get()
-            update_available, latest_version, download_url = updater.check_for_updates()
-            
-            # Ergebnis im Haupt-Thread anzeigen
-            self.after(0, lambda: self._handle_update_check(
-                update_available, latest_version, download_url, updater
-            ))
-        
+            try:
+                updater = UpdateManager(self.version)
+                # Setze Update-Methode
+                updater.use_commit_check = self.update_use_commits_var.get()
+                update_available, latest_version, download_url = updater.check_for_updates()
+
+                # Ergebnis im Haupt-Thread anzeigen
+                self.after(0, lambda: self._handle_update_check(
+                    update_available, latest_version, download_url, updater
+                ))
+            except Exception as e:
+                print(f"Fehler beim Update-Check: {e}")
+                self.after(0, lambda: self.update_status.configure(
+                    text=f"✗ Fehler beim Update-Check: {str(e)[:50]}",
+                    text_color="red"
+                ))
+
         thread = threading.Thread(target=check_thread, daemon=True)
         thread.start()
     
@@ -4090,22 +4176,24 @@ class MainWindow(ctk.CTk):
                 text_color="green"
             )
             
-            # Release Notes holen
+            # Release Notes holen (Issue: Truncated release notes)
             release_notes = updater.get_release_notes()
-            
-            # Update-Dialog anzeigen
-            message = (
-                f"🎉 Neue Version verfügbar!\n\n"
-                f"Installiert: v{self.version}\n"
-                f"Verfügbar: v{latest_version}\n\n"
-                f"Was ist neu:\n"
-                f"{release_notes[:500] if release_notes else 'Siehe GitHub für Details'}\n\n"
-                f"Möchten Sie jetzt aktualisieren?\n\n"
-                f"⚠️ Die Anwendung wird neu gestartet."
-            )
-            
-            if messagebox.askyesno("Update verfügbar", message):
-                self._install_update(download_url, updater)
+
+            # Erstelle ausführlichere Update-Info (nicht gekürzt)
+            if release_notes:
+                # Zeige vollständige Release Notes in seperatem Fenster
+                self._show_update_dialog(latest_version, release_notes, download_url, updater)
+            else:
+                # Fallback auf einfache Bestätigung
+                message = (
+                    f"🎉 Neue Version verfügbar!\n\n"
+                    f"Installiert: v{self.version}\n"
+                    f"Verfügbar: v{latest_version}\n\n"
+                    f"Möchten Sie jetzt aktualisieren?\n\n"
+                    f"⚠️ Die Anwendung wird neu gestartet."
+                )
+                if messagebox.askyesno("Update verfügbar", message):
+                    self._install_update(download_url, updater)
         else:
             self.update_status.configure(
                 text=f"✓ Aktuell (v{self.version})", 
@@ -4117,13 +4205,15 @@ class MainWindow(ctk.CTk):
             )
     
     def _install_update(self, download_url: str, updater):
-        """Installiert ein Update."""
-        # Progress-Dialog erstellen
+        """Installiert ein Update mit modeless Progress-Dialog (Issue: Modal progress window blockiert UI)."""
+        # Progress-Dialog erstellen (NICHT modal - allow interaction)
         progress_window = ctk.CTkToplevel(self)
         progress_window.title("Update wird installiert...")
-        progress_window.geometry("500x200")
+        progress_window.geometry("550x250")
         progress_window.transient(self)
-        progress_window.grab_set()
+        # WICHTIG: Kein grab_set() - Dialog ist modeless, User kann weiter arbeiten
+        progress_window.attributes("-topmost", True)  # Dialog immer sichtbar
+        progress_window.resizable(False, False)
         
         # Progress-Label
         progress_label = ctk.CTkLabel(
@@ -4153,30 +4243,49 @@ class MainWindow(ctk.CTk):
             self.after(0, lambda: status_label.configure(text=message))
         
         def install_thread():
-            """Installiert Update in separatem Thread."""
-            success, message = updater.download_and_install_update(
-                download_url, 
-                progress_callback
-            )
-            
-            # Ergebnis anzeigen
-            self.after(0, lambda: self._handle_update_result(
-                success, message, progress_window, updater
-            ))
-        
+            """Installiert Update in separatem Thread mit Fehlerbehandlung."""
+            try:
+                success, message = updater.download_and_install_update(
+                    download_url,
+                    progress_callback
+                )
+
+                # Ergebnis anzeigen
+                self.after(0, lambda: self._handle_update_result(
+                    success, message, progress_window, updater
+                ))
+            except Exception as e:
+                error_msg = f"❌ Unerwarteter Fehler bei Update-Installation:\n{str(e)}"
+                self.after(0, lambda: self._handle_update_result(
+                    False, error_msg, progress_window, updater
+                ))
+
         # Update in Thread starten
-        thread = threading.Thread(target=install_thread, daemon=True)
-        thread.start()
+        try:
+            thread = threading.Thread(target=install_thread, daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"Fehler beim Starten des Update-Threads: {e}")
+            progress_window.destroy()
+            messagebox.showerror("Fehler", f"Konnte Update-Thread nicht starten:\n{e}")
     
-    def _handle_update_result(self, success: bool, message: str, 
+    def _handle_update_result(self, success: bool, message: str,
                              progress_window, updater):
-        """Verarbeitet das Ergebnis der Update-Installation."""
-        progress_window.destroy()
-        
+        """Verarbeitet das Ergebnis der Update-Installation mit Fehlerbehandlung."""
+        try:
+            if progress_window and progress_window.winfo_exists():
+                progress_window.destroy()
+        except:
+            pass
+
         if success:
             if messagebox.askyesno("Update erfolgreich", message):
                 # Anwendung neu starten
-                updater.restart_application()
+                try:
+                    updater.restart_application()
+                except Exception as e:
+                    print(f"Fehler beim Neustart: {e}")
+                    messagebox.showerror("Fehler", f"Konnte Anwendung nicht neu starten:\n{e}")
         else:
             self.update_status.configure(text="✗ Update fehlgeschlagen", text_color="red")
             messagebox.showerror("Update fehlgeschlagen", message)

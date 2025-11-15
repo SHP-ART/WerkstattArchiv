@@ -273,12 +273,38 @@ class UpdateManager:
                             progress_callback(percent, f"Heruntergeladen: {downloaded // 1024} KB")
             
             if progress_callback:
-                progress_callback(50, "Entpacke Update...")
-            
+                progress_callback(50, "Verifiziere Download...")
+
+            # Download-Integrität prüfen (Issue: No download integrity)
+            if not os.path.exists(zip_path):
+                raise RuntimeError("Download-Datei nicht gefunden")
+
+            if os.path.getsize(zip_path) == 0:
+                raise RuntimeError("Download-Datei ist leer (0 Bytes)")
+
+            # ZIP-Datei auf Validität prüfen
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as test_zip:
+                    # Teste ob ZIP korrekt ist (ohne zu entpacken)
+                    test_result = test_zip.testzip()
+                    if test_result is not None:
+                        raise RuntimeError(f"ZIP-Datei beschädigt: {test_result}")
+                    print(f"✓ ZIP-Datei Größe: {os.path.getsize(zip_path) // 1024} KB")
+                    print(f"✓ ZIP-Integrität verifiziert")
+            except zipfile.BadZipFile as e:
+                raise RuntimeError(f"ZIP-Datei ungültig: {e}")
+
+            if progress_callback:
+                progress_callback(55, "Entpacke Update...")
+
             # ZIP entpacken
             extract_dir = os.path.join(temp_dir, "extracted")
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                print(f"✓ ZIP entpackt nach: {extract_dir}")
+            except Exception as e:
+                raise RuntimeError(f"Fehler beim Entpacken: {e}")
             
             # Finde den Hauptordner im ZIP (GitHub erstellt einen Unterordner)
             extracted_items = os.listdir(extract_dir)
@@ -402,12 +428,26 @@ class UpdateManager:
             
             if progress_callback:
                 progress_callback(95, "Räume auf...")
-            
-            # Aufräumen
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass  # Temporäres Verzeichnis kann später gelöscht werden
+
+            # Aufräumen mit besserem Logging (Issue: Silent cleanup failures)
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=False)
+                    print(f"✓ Temporäres Verzeichnis gelöscht: {temp_dir}")
+                except PermissionError as e:
+                    print(f"⚠️  Warnung: Konnte temp-Verzeichnis nicht vollständig löschen (Permissions): {e}")
+                    # Versuche mit Force-Löschung auf Windows
+                    try:
+                        import stat
+                        def handle_remove_readonly(func, path, exc):
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        shutil.rmtree(temp_dir, onerror=handle_remove_readonly)
+                        print(f"✓ Temp-Verzeichnis mit Force-Löschung erfolgreich gelöscht")
+                    except Exception as e2:
+                        print(f"⚠️  Konnte Temp-Verzeichnis nicht löschen (wird später gelöscht): {e2}")
+                except Exception as e:
+                    print(f"⚠️  Fehler beim Löschen des Temp-Verzeichnisses: {e}")
             
             if progress_callback:
                 progress_callback(100, "Update abgeschlossen!")
@@ -450,12 +490,13 @@ class UpdateManager:
                     error_msg += f"\n\n⚠️ Konnte Einstellungen nicht wiederherstellen: {restore_error}"
                     error_msg += f"\n\n📦 Manuelles Backup verfügbar in:\n{backup_dir}"
             
-            # Aufräumen bei Fehler
+            # Aufräumen bei Fehler mit besserer Fehlerbehandlung
             if temp_dir and os.path.exists(temp_dir):
                 try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
+                    shutil.rmtree(temp_dir, ignore_errors=False)
+                    print(f"✓ Temp-Verzeichnis bei Fehler gelöscht: {temp_dir}")
+                except Exception as cleanup_error:
+                    print(f"⚠️  Konnte Temp-Verzeichnis bei Fehler nicht löschen: {cleanup_error}")
             
             return False, f"❌ Fehler beim Update:\n{error_msg}"
     
