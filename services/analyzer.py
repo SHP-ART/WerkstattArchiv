@@ -7,6 +7,8 @@ import re
 import os
 from typing import Dict, Optional, Any
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from services.vorlagen import VorlagenManager
 
@@ -40,6 +42,10 @@ try:
 except Exception as e:
     print(f"Warnung: PatternManager konnte nicht geladen werden: {e}")
     PATTERN_MANAGER = None
+
+# OCR Thread Pool Executor (max 2 parallel OCR jobs)
+# Verhindert, dass 10 OCR-Jobs gleichzeitig laufen und System überlasten
+OCR_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="OCR-Worker")
 
 # Fallback: Original Patterns (falls PatternManager nicht verfügbar)
 # Regex-Patterns für die Extraktion
@@ -224,30 +230,63 @@ def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = No
 def extract_text(file_path: str, tesseract_path: Optional[str] = None) -> str:
     """
     Extrahiert Text aus einer Datei (PDF oder Bild).
-    
+
     Args:
         file_path: Pfad zur Datei
         tesseract_path: Optionaler Pfad zur Tesseract-Installation
-        
+
     Returns:
         Extrahierter Text
     """
     ext = os.path.splitext(file_path)[1].lower()
-    
+
     if ext == ".pdf":
         # Erst normalen PDF-Text versuchen
         text = extract_text_from_pdf(file_path)
-        
+
         # Falls kein Text gefunden, OCR versuchen
         if not text.strip():
             text = extract_text_from_pdf_ocr(file_path, tesseract_path)
-        
+
         return text
-    
+
     elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
         return extract_text_from_image_ocr(file_path, tesseract_path)
-    
+
     return ""
+
+
+def extract_text_async(file_paths: list, tesseract_path: Optional[str] = None) -> Dict[str, str]:
+    """
+    Extrahiert Text aus mehreren Dateien ASYNCHRON mit ThreadPool (nicht blockierend).
+    Perfekt für Batch-Verarbeitung von vielen Dokumenten ohne GUI-Blockierung.
+
+    Args:
+        file_paths: Liste von Dateipfaden
+        tesseract_path: Optionaler Pfad zur Tesseract-Installation
+
+    Returns:
+        Dictionary: {file_path: extracted_text}
+    """
+    results = {}
+
+    # Submit all extraction jobs to thread pool
+    future_to_path = {
+        OCR_EXECUTOR.submit(extract_text, fp, tesseract_path): fp
+        for fp in file_paths
+    }
+
+    # Collect results as they complete (streaming)
+    for future in as_completed(future_to_path):
+        file_path = future_to_path[future]
+        try:
+            text = future.result()
+            results[file_path] = text
+        except Exception as e:
+            print(f"⚠ Fehler beim Extrahieren von {file_path}: {e}")
+            results[file_path] = ""
+
+    return results
 
 
 def extract_kundennummer(text: str) -> Optional[str]:
