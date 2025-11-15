@@ -253,14 +253,31 @@ class MainWindow(ctk.CTk):
     
     def show_loading_screen(self):
         """Zeigt einen Ladebildschirm während die GUI geladen wird."""
+        from PIL import Image
+        import os
+        
         # Loading Frame - mit place() für Z-Index ÜBER allem
         self.loading_frame = ctk.CTkFrame(self)
         self.loading_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
         
+        # Logo laden und anzeigen
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
+                                 "logo", "ChatGPT Image 15. Nov. 2025, 07_48_25.png")
+        try:
+            logo_image = Image.open(logo_path)
+            logo_image = logo_image.resize((200, 200), Image.Resampling.LANCZOS)
+            logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(200, 200))
+            
+            logo_label = ctk.CTkLabel(self.loading_frame, image=logo_photo, text="")
+            logo_label.pack(pady=(80, 20))
+            logo_label.image = logo_photo  # Referenz behalten
+        except Exception as e:
+            print(f"⚠️ Logo konnte nicht geladen werden: {e}")
+        
         # Titel
         title = ctk.CTkLabel(self.loading_frame, text=f"{self.app_name} v{self.version}",
                             font=ctk.CTkFont(size=32, weight="bold"))
-        title.pack(pady=(100, 20))
+        title.pack(pady=(10, 20))
         
         # Lade-Text
         loading_label = ctk.CTkLabel(self.loading_frame, text="Lade Anwendung...",
@@ -580,14 +597,6 @@ class MainWindow(ctk.CTk):
         # Hauptcontainer zentriert
         container = ctk.CTkFrame(tab, fg_color="transparent")
         container.pack(expand=True, fill="both", padx=40, pady=40)
-        
-        # Logo/Icon (großes Emoji als Platzhalter)
-        logo_label = ctk.CTkLabel(
-            container,
-            text="📚",
-            font=ctk.CTkFont(size=120)
-        )
-        logo_label.pack(pady=(0, 20))
         
         # Titel
         title = ctk.CTkLabel(
