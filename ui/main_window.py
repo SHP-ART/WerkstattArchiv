@@ -25,6 +25,96 @@ from core.folder_structure_manager import FolderStructureManager
 from core.config_backup import ConfigBackupManager
 from services.keyword_detector import KeywordDetector
 
+class ProgressDialog(ctk.CTkToplevel):
+    """Dialog mit Progress-Bar für längere Operationen (Batch-Processing, Scans, etc)."""
+
+    def __init__(self, parent, title: str, total_items: int):
+        """
+        Erstellt einen Progress-Dialog.
+
+        Args:
+            parent: Parent-Fenster
+            title: Dialog-Titel
+            total_items: Gesamtzahl Items zu verarbeiten
+        """
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("400x150")
+        self.resizable(False, False)
+        self.cancelled = False
+        self.total_items = total_items
+        self.current_item = 0
+
+        # Verhindere dass Dialog im Hintergrund verschwindet
+        self.attributes("-topmost", True)
+
+        # Title Label
+        title_label = ctk.CTkLabel(self, text=title, font=ctk.CTkFont(size=14, weight="bold"))
+        title_label.pack(padx=20, pady=(20, 10))
+
+        # Progress-Bar
+        self.progress_bar = ctk.CTkProgressBar(self, width=350)
+        self.progress_bar.set(0)
+        self.progress_bar.pack(padx=20, pady=10)
+
+        # Status-Label (aktuelles Item)
+        self.status_label = ctk.CTkLabel(
+            self, text="Vorbereitung...", font=ctk.CTkFont(size=11)
+        )
+        self.status_label.pack(padx=20, pady=5)
+
+        # Progress-Text (x/y Items)
+        self.progress_text = ctk.CTkLabel(
+            self, text=f"0/{total_items} Items", font=ctk.CTkFont(size=10, color="gray")
+        )
+        self.progress_text.pack(padx=20, pady=5)
+
+        # Cancel-Button
+        self.cancel_btn = ctk.CTkButton(
+            self, text="Abbrechen", command=self.cancel, width=100
+        )
+        self.cancel_btn.pack(padx=20, pady=10)
+
+    def update_progress(self, current: int, status: str = ""):
+        """
+        Aktualisiert Progress-Bar.
+
+        Args:
+            current: Aktuelle Item-Nummer
+            status: Optional Status-Text (z.B. Dateiname)
+        """
+        self.current_item = current
+        progress = current / self.total_items if self.total_items > 0 else 0
+        self.progress_bar.set(progress)
+        self.progress_text.configure(text=f"{current}/{self.total_items} Items")
+
+        if status:
+            # Kürze Status wenn zu lang
+            if len(status) > 50:
+                status = status[:47] + "..."
+            self.status_label.configure(text=f"Verarbeite: {status}")
+
+        # Force GUI Update
+        self.update_idletasks()
+
+    def cancel(self):
+        """Markiert Dialog als abgebrochen."""
+        self.cancelled = True
+        self.cancel_btn.configure(state="disabled", text="Wird abgebrochen...")
+        self.update_idletasks()
+
+    def is_cancelled(self) -> bool:
+        """Prüft ob Dialog abgebrochen wurde."""
+        return self.cancelled
+
+    def close_dialog(self):
+        """Schließt den Dialog."""
+        try:
+            self.destroy()
+        except:
+            pass
+
+
 try:
     from services.watchdog_service import WatchdogService
     WATCHDOG_AVAILABLE = True
@@ -51,6 +141,12 @@ class MainWindow(ctk.CTk):
         self.customer_manager = customer_manager
         self.unclear_documents: List[Dict[str, Any]] = []
         self.document_index = DocumentIndex()
+
+        # Aktualisiere Datenbank-Indexes (schnell da CREATE INDEX IF NOT EXISTS)
+        upgrade_result = self.document_index.upgrade_indexes()
+        if upgrade_result.get("new_indexes_created", 0) > 0:
+            print(f"✓ {upgrade_result['message']}")
+
         self.vorlagen_manager = VorlagenManager()
         self.pattern_manager = PatternManager()
         self.virtual_customer_manager = VirtualCustomerManager(
@@ -98,7 +194,7 @@ class MainWindow(ctk.CTk):
             "Unklare_refreshed": False,
             "Virtuelle_refreshed": False
         }
-        
+
         # Cache für vorberechnete Daten (Performance-Optimierung)
         self.cached_stats = {}
         self.cached_virtual_count = 0
@@ -106,7 +202,12 @@ class MainWindow(ctk.CTk):
         # Cache für Dropdown-Liste
         self._customer_dropdown_cache = None
         self._customer_dropdown_cache_time = 0
-        
+
+        # Pagination für Suchergebnisse (Performance-Optimierung)
+        self.search_results_all = []  # Alle Suchergebnisse
+        self.search_results_page = 1  # Aktuelle Seite
+        self.search_results_per_page = 50  # Ergebnisse pro Seite
+
         # Log-Buffer für Log-Tab
         self.log_buffer = []
         self.max_log_entries = 500  # Maximal 500 Log-Einträge im Speicher (Performance)
@@ -2348,21 +2449,46 @@ class MainWindow(ctk.CTk):
 
         # Scan im Thread ausführen für bessere Performance
         threading.Thread(target=self._scan_files_thread, args=(input_dir,), daemon=True).start()
-    
+
     def _scan_files_thread(self, input_dir):
-        """Thread-Funktion für schnellen Scan ohne GUI-Blockierung."""
+        """Thread-Funktion für schnellen Scan ohne GUI-Blockierung mit Progress-Bar."""
+        progress_dialog = None
         try:
-            # Dateien finden (schnell, ohne GUI-Updates)
-            files = []
+            # 1. Zähle alle Dateien (für Progress-Dialog)
             all_files = os.listdir(input_dir)
-            
-            for file in all_files:
+            total_files = len(all_files)
+
+            # Erstelle Progress-Dialog
+            self.after(0, lambda: self._create_progress_dialog(progress_dialog, total_files))
+
+            # Kleine Verzögerung für Dialog-Creation
+            time.sleep(0.2)
+
+            # 2. Scan mit Progress-Feedback
+            files = []
+            for index, file in enumerate(all_files):
+                # Prüfe ob Scan abgebrochen wurde
+                if hasattr(self, "progress_dialog") and self.progress_dialog and self.progress_dialog.is_cancelled():
+                    self.add_log("INFO", "Scan von Nutzer abgebrochen")
+                    self.after(0, lambda: self._close_progress_dialog())
+                    self.after(0, lambda: self.process_status.configure(text="❌ Scan abgebrochen", text_color="orange"))
+                    self.after(0, lambda: self.scan_btn.configure(state="normal", text="📂 Eingangsordner scannen"))
+                    self.is_scanning = False
+                    return
+
                 file_path = os.path.join(input_dir, file)
                 if os.path.isfile(file_path):
                     ext = os.path.splitext(file)[1].lower()
                     if ext in [".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
                         files.append(file_path)
-            
+
+                # Update Progress (alle 5 Dateien, um Performance nicht zu blockieren)
+                if index % 5 == 0:
+                    self.after(0, lambda f=file, idx=index + 1: self._update_progress(f, idx))
+
+            # Schließe Progress-Dialog
+            self.after(0, self._close_progress_dialog)
+
             if not files:
                 self.after(0, lambda: self.process_status.configure(text="❌ Keine Dateien gefunden", text_color="orange"))
                 self.after(0, lambda: self.scan_btn.configure(state="normal", text="📂 Eingangsordner scannen"))
@@ -2371,15 +2497,16 @@ class MainWindow(ctk.CTk):
                 self.after(100, lambda: messagebox.showinfo("Scan abgeschlossen",
                                                             "Keine Dateien gefunden.\n\nDer Eingangsordner ist leer."))
                 return
-            
+
             # Speichere Dateien
             self.scanned_files = files
-            
+
             # GUI-Updates im Main-Thread
             self.after(0, self._display_scanned_files, files)
-            
+
         except Exception as e:
             self.add_log("ERROR", f"Fehler beim Scannen", str(e))
+            self.after(0, self._close_progress_dialog)
             self.after(0, lambda: self.process_status.configure(
                 text=f"❌ Fehler: {str(e)}", text_color="red"
             ))
@@ -2389,9 +2516,30 @@ class MainWindow(ctk.CTk):
             self.after(100, lambda e=e: messagebox.showerror("Fehler beim Scannen",
                                                              f"Ein Fehler ist aufgetreten:\n\n{str(e)}"))
     
+    def _create_progress_dialog(self, progress_dialog, total_items: int):
+        """Erstellt einen Progress-Dialog."""
+        self.progress_dialog = ProgressDialog(self, "📊 Datei-Scan läuft...", total_items)
+
+    def _update_progress(self, filename: str, current: int):
+        """Aktualisiert den Progress-Dialog."""
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
+            try:
+                self.progress_dialog.update_progress(current, filename)
+            except:
+                pass
+
+    def _close_progress_dialog(self):
+        """Schließt den Progress-Dialog."""
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
+            try:
+                self.progress_dialog.close_dialog()
+            except:
+                pass
+            self.progress_dialog = None
+
     def _display_scanned_files(self, files):
         """Zeigt gescannte Dateien in der GUI an."""
-        
+
         self.add_log("SUCCESS", f"Scan abgeschlossen: {len(files)} Dateien gefunden")
 
         # Alte Ergebnisse löschen
@@ -2465,7 +2613,7 @@ class MainWindow(ctk.CTk):
                 self.progress_label.pack(pady=(0, 5))
         
         # Fortschrittsbalken zurücksetzen
-        self._update_progress(0, f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
+        self._update_inline_progress(0, f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
 
         # Status aktualisieren
         self.process_status.configure(text="🔄 VERARBEITUNG GESTARTET - Bitte warten...", text_color="blue")
@@ -2476,8 +2624,8 @@ class MainWindow(ctk.CTk):
         thread.daemon = True
         thread.start()
     
-    def _update_progress(self, value: float, text: str = ""):
-        """Aktualisiert Progress-Bar und Label sicher (prüft ob Widgets existieren)."""
+    def _update_inline_progress(self, value: float, text: str = ""):
+        """Aktualisiert Inline-Progress-Bar und Label sicher (prüft ob Widgets existieren)."""
         if self.progress_bar is not None:
             self.progress_bar.set(value)
         if self.progress_label is not None and text:
@@ -2491,7 +2639,15 @@ class MainWindow(ctk.CTk):
             self.progress_label.pack_forget()
     
     def _process_documents(self):
-        """Verarbeitet alle Dokumente im Eingangsordner (läuft in Thread)."""
+        """Verarbeitet alle Dokumente im Eingangsordner (läuft in Thread) mit Progress-Feedback."""
+        # Erstelle Progress-Dialog mit benutzerdefiniertem Titel
+        files_count = len(self.scanned_files)
+
+        def create_dialog():
+            self.progress_dialog = ProgressDialog(self, f"⚙️ Verarbeite {files_count} Datei(en)...", files_count)
+
+        self.after(0, create_dialog)
+        time.sleep(0.2)
 
         root_dir = self.config.get("root_dir")
         unclear_dir = self.config.get("unclear_dir")
@@ -2557,6 +2713,13 @@ class MainWindow(ctk.CTk):
         for i, file_path in enumerate(files):
             filename = os.path.basename(file_path)
 
+            # Prüfe ob User Verarbeitung abgebrochen hat
+            if hasattr(self, 'progress_dialog') and self.progress_dialog and self.progress_dialog.is_cancelled():
+                print("⚠️  Verarbeitung abgebrochen vom Benutzer")
+                self.after(0, lambda: self.process_status.configure(text="⚠ Verarbeitung abgebrochen", text_color="orange"))
+                self.after(0, lambda: self._close_progress_dialog())
+                break
+
             try:
                 # Prüfe ob Datei noch existiert
                 if not os.path.exists(file_path):
@@ -2567,7 +2730,7 @@ class MainWindow(ctk.CTk):
                 # Fortschritt PRO DATEI: Start bei 0%
                 def update_start(f=filename, idx=i, total=len(files)):
                     self._update_result_row(f, {}, f"⏳ Wird verarbeitet...", "yellow")
-                    self._update_progress(0, f"Verarbeite Datei {idx+1} von {total}: Starte...")
+                    self._update_progress(idx+1, f"Lese Datei: {f[:40]}...")
                     self.process_status.configure(
                         text=f"🔄 Datei {idx+1}/{total}: {f}",
                         text_color="blue"
@@ -2576,11 +2739,6 @@ class MainWindow(ctk.CTk):
 
                 # Kurze Pause für GUI-Update
                 time.sleep(0.1)
-
-                # Fortschritt: 20% - Datei wird gelesen
-                def update_reading(f=filename, idx=i, total=len(files)):
-                    self._update_progress(0.2, f"Verarbeite Datei {idx+1} von {total}: Lese Datei...")
-                self.after(0, update_reading)
 
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
@@ -2591,9 +2749,9 @@ class MainWindow(ctk.CTk):
                     legacy_resolver=legacy_resolver
                 )
 
-                # Fortschritt: 70% - Analyse abgeschlossen
+                # Fortschritt: Analyse abgeschlossen
                 def update_analyzed(f=filename, idx=i, total=len(files)):
-                    self._update_progress(0.7, f"Verarbeite Datei {idx+1} von {total}: Analyse abgeschlossen...")
+                    self._update_progress(idx+1, f"Analysiere: {f[:40]}...")
                 self.after(0, update_analyzed)
 
                 # DUPLIKATS-PRÜFUNG
@@ -2617,7 +2775,7 @@ class MainWindow(ctk.CTk):
                             shutil.move(file_path, dup_target_path)
 
                             def update_duplicate(f=filename, dup=dup_name, idx=i, total=len(files)):
-                                self._update_progress(1.0, f"Datei {idx+1} von {total}: Duplikat erkannt und verschoben!")
+                                self._update_progress(idx+1, f"Duplikat erkannt: {f[:40]}...")
                                 self._update_result_row(f, analysis, f"⚠ Duplikat → verschoben in Duplikate/", "orange")
                             self.after(0, update_duplicate)
 
@@ -2640,9 +2798,9 @@ class MainWindow(ctk.CTk):
                     file_path, analysis, root_dir, unclear_dir, self.customer_manager, self.folder_structure_manager
                 )
 
-                # Fortschritt: 90% - Dokument verschoben
+                # Fortschritt: Dokument organisiert
                 def update_moved(f=filename, idx=i, total=len(files)):
-                    self._update_progress(0.9, f"Verarbeite Datei {idx+1} von {total}: Dokument organisiert...")
+                    self._update_progress(idx+1, f"Organisiere: {f[:40]}...")
                 self.after(0, update_moved)
                 
                 # Logging
@@ -2674,9 +2832,9 @@ class MainWindow(ctk.CTk):
                 if analysis.get("is_legacy") and analysis.get("legacy_match_reason") == "unclear":
                     self.document_index.add_unclear_legacy(target_path, analysis)
 
-                # Fortschritt: 100% - Fertig!
+                # Fortschritt: Fertig mit dieser Datei!
                 def update_complete(f=filename, a=analysis, s=status, c=color, idx=i, total=len(files)):
-                    self._update_progress(1.0, f"Datei {idx+1} von {total}: Fertig!")
+                    self._update_progress(idx+1, f"✓ Fertig: {f[:40]}...")
                     self._update_result_row(f, a, s, c)
                 self.after(0, update_complete)
 
@@ -2687,9 +2845,9 @@ class MainWindow(ctk.CTk):
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
                 error_count += 1
-                # Fehler anzeigen (im Haupt-Thread) mit Fortschrittsbalken auf 100%
+                # Fehler anzeigen (im Haupt-Thread)
                 def update_error(f=filename, err=str(e), idx=i, total=len(files)):
-                    self._update_progress(1.0, f"Datei {idx+1} von {total}: Fehler!")
+                    self._update_progress(idx+1, f"✗ Fehler: {f[:40]}...")
                     self._update_result_row(f, {}, f"✗ Fehler: {err}", "red")
                 self.after(0, update_error)
                 time.sleep(0.2)
@@ -2712,9 +2870,8 @@ class MainWindow(ctk.CTk):
             text_color="green"
         ))
         
-        # Fortschrittsbalken auf 100% setzen und dann verstecken
-        self.after(0, lambda: self._update_progress(1.0, f"{len(files)} / {len(files)} Dokumente verarbeitet - Fertig!"))
-        self.after(2000, lambda: self._hide_progress())  # Nach 2 Sekunden ausblenden
+        # Progress-Dialog schließen
+        self.after(0, lambda: self._close_progress_dialog())
 
         # Button wieder aktivieren (im Haupt-Thread)
         self.after(0, lambda: self.scan_btn.configure(state="normal"))
@@ -2965,10 +3122,14 @@ class MainWindow(ctk.CTk):
         self.search_jahr.set("Alle")
         self.search_monat.set("Alle")
         self.search_status.configure(text="")
-        
+
         # Ergebnisse löschen
         for widget in self.search_results_container.winfo_children():
             widget.destroy()
+
+        # Reset Pagination
+        self.search_results_all = []
+        self.search_results_page = 1
     
     def show_statistics(self):
         """Zeigt Statistiken über die indexierten Dokumente (nutzt Cache)."""
@@ -3109,21 +3270,85 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("Fehler", f"Fehler beim Laden der Statistiken:\n{str(e)}")
     
     def _display_search_results(self, results: List[Dict[str, Any]]):
-        """Zeigt die Suchergebnisse in der Tabelle an."""
+        """Zeigt die Suchergebnisse mit Pagination an."""
+        # Speichere alle Ergebnisse und setze auf Seite 1
+        self.search_results_all = results
+        self.search_results_page = 1
+
+        # Zeige Seite 1
+        self._show_search_page(1)
+
+    def _show_search_page(self, page: int):
+        """Zeigt eine bestimmte Seite der Suchergebnisse mit Pagination-Controls."""
         # Alte Ergebnisse löschen
         for widget in self.search_results_container.winfo_children():
             widget.destroy()
-        
-        if not results:
-            no_results = ctk.CTkLabel(self.search_results_container, 
+
+        if not self.search_results_all:
+            no_results = ctk.CTkLabel(self.search_results_container,
                                      text="Keine Dokumente gefunden",
                                      font=ctk.CTkFont(size=14))
             no_results.pack(pady=20)
             return
-        
-        # Ergebnisse anzeigen
-        for result in results:
-            self._add_search_result_row(result)
+
+        # Berechne Pagination
+        total_results = len(self.search_results_all)
+        total_pages = (total_results + self.search_results_per_page - 1) // self.search_results_per_page
+        page = max(1, min(page, total_pages))  # Validate page
+        self.search_results_page = page
+
+        # Berechne Start- und End-Index
+        start_idx = (page - 1) * self.search_results_per_page
+        end_idx = min(start_idx + self.search_results_per_page, total_results)
+
+        # Zeige Ergebnisse für diese Seite
+        for i in range(start_idx, end_idx):
+            self._add_search_result_row(self.search_results_all[i])
+
+        # Pagination-Controls hinzufügen (nur wenn > 1 Seite)
+        if total_pages > 1:
+            self._add_pagination_controls(page, total_pages, total_results)
+
+    def _add_pagination_controls(self, current_page: int, total_pages: int, total_results: int):
+        """Fügt Pagination-Controls hinzu (Previous, Next, Page Info)."""
+        pagination_frame = ctk.CTkFrame(self.search_results_container)
+        pagination_frame.pack(fill="x", padx=5, pady=10)
+
+        # Linker Spacer
+        ctk.CTkLabel(pagination_frame, text="").pack(side="left", expand=True)
+
+        # Previous Button
+        prev_btn = ctk.CTkButton(
+            pagination_frame,
+            text="← Zurück",
+            width=100,
+            command=lambda: self._show_search_page(current_page - 1),
+            state="normal" if current_page > 1 else "disabled"
+        )
+        prev_btn.pack(side="left", padx=5)
+
+        # Page Info
+        results_start = (current_page - 1) * self.search_results_per_page + 1
+        results_end = min(current_page * self.search_results_per_page, total_results)
+        page_info = ctk.CTkLabel(
+            pagination_frame,
+            text=f"Seite {current_page}/{total_pages} ({results_start}-{results_end} von {total_results})",
+            font=ctk.CTkFont(size=12)
+        )
+        page_info.pack(side="left", padx=10)
+
+        # Next Button
+        next_btn = ctk.CTkButton(
+            pagination_frame,
+            text="Weiter →",
+            width=100,
+            command=lambda: self._show_search_page(current_page + 1),
+            state="normal" if current_page < total_pages else "disabled"
+        )
+        next_btn.pack(side="left", padx=5)
+
+        # Rechter Spacer
+        ctk.CTkLabel(pagination_frame, text="").pack(side="left", expand=True)
     
     def _add_search_result_row(self, result: Dict[str, Any]):
         """Fügt eine Ergebniszeile zur Suchtabelle hinzu."""
@@ -3828,6 +4053,85 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Fehler", message)
     
+    def _show_update_dialog(self, latest_version: str, release_notes: str,
+                           download_url: str, updater):
+        """Zeigt ein ausführliches Update-Dialog mit vollständigen Release Notes."""
+        update_window = ctk.CTkToplevel(self)
+        update_window.title(f"Update auf Version {latest_version}")
+        update_window.geometry("700x500")
+        update_window.attributes("-topmost", True)
+
+        # Header
+        header = ctk.CTkLabel(
+            update_window,
+            text=f"🎉 Neue Version verfügbar: v{latest_version}",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        header.pack(pady=15, padx=15)
+
+        # Versions-Info
+        info_frame = ctk.CTkFrame(update_window, fg_color="transparent")
+        info_frame.pack(pady=10, padx=15, fill="x")
+
+        ctk.CTkLabel(
+            info_frame,
+            text=f"Aktuell: v{self.version}  →  Verfügbar: v{latest_version}",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left")
+
+        # Release Notes Text Widget mit Scrollbar
+        notes_frame = ctk.CTkFrame(update_window)
+        notes_frame.pack(pady=10, padx=15, fill="both", expand=True)
+
+        scrollbar = ctk.CTkScrollbar(notes_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        text_widget = ctk.CTkTextbox(
+            notes_frame,
+            wrap="word",
+            yscrollcommand=scrollbar.set,
+            height=20
+        )
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.configure(command=text_widget.yview)
+
+        # Release Notes einfügen
+        text_widget.insert("0.0", release_notes)
+        text_widget.configure(state="disabled")  # Read-only
+
+        # Buttons
+        button_frame = ctk.CTkFrame(update_window, fg_color="transparent")
+        button_frame.pack(pady=15, padx=15, fill="x")
+
+        def install():
+            update_window.destroy()
+            self._install_update(download_url, updater)
+
+        def cancel():
+            update_window.destroy()
+
+        ctk.CTkButton(
+            button_frame,
+            text="✓ Jetzt aktualisieren",
+            command=install,
+            fg_color="green"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            button_frame,
+            text="✗ Später",
+            command=cancel
+        ).pack(side="left", padx=5)
+
+        # Info-Text
+        info_text = ctk.CTkLabel(
+            button_frame,
+            text="⚠️ Die Anwendung wird neu gestartet",
+            text_color="gray",
+            font=ctk.CTkFont(size=10)
+        )
+        info_text.pack(side="right")
+
     def on_update_method_changed(self):
         """Wird aufgerufen wenn Update-Methode geändert wird."""
         use_commits = self.update_use_commits_var.get()
@@ -3835,24 +4139,31 @@ class MainWindow(ctk.CTk):
         self.add_log("INFO", f"Update-Methode geändert: {method}")
     
     def check_for_updates(self):
-        """Prüft auf neue Versions-Updates von GitHub."""
+        """Prüft auf neue Versions-Updates von GitHub mit besserer Fehlerbehandlung."""
         from services.updater import UpdateManager
-        
+
         self.update_status.configure(text="🔄 Prüfe auf Updates...", text_color="blue")
         self.update()
-        
+
         # In Thread ausführen um GUI nicht zu blockieren
         def check_thread():
-            updater = UpdateManager(self.version)
-            # Setze Update-Methode
-            updater.use_commit_check = self.update_use_commits_var.get()
-            update_available, latest_version, download_url = updater.check_for_updates()
-            
-            # Ergebnis im Haupt-Thread anzeigen
-            self.after(0, lambda: self._handle_update_check(
-                update_available, latest_version, download_url, updater
-            ))
-        
+            try:
+                updater = UpdateManager(self.version)
+                # Setze Update-Methode
+                updater.use_commit_check = self.update_use_commits_var.get()
+                update_available, latest_version, download_url = updater.check_for_updates()
+
+                # Ergebnis im Haupt-Thread anzeigen
+                self.after(0, lambda: self._handle_update_check(
+                    update_available, latest_version, download_url, updater
+                ))
+            except Exception as e:
+                print(f"Fehler beim Update-Check: {e}")
+                self.after(0, lambda: self.update_status.configure(
+                    text=f"✗ Fehler beim Update-Check: {str(e)[:50]}",
+                    text_color="red"
+                ))
+
         thread = threading.Thread(target=check_thread, daemon=True)
         thread.start()
     
@@ -3865,22 +4176,24 @@ class MainWindow(ctk.CTk):
                 text_color="green"
             )
             
-            # Release Notes holen
+            # Release Notes holen (Issue: Truncated release notes)
             release_notes = updater.get_release_notes()
-            
-            # Update-Dialog anzeigen
-            message = (
-                f"🎉 Neue Version verfügbar!\n\n"
-                f"Installiert: v{self.version}\n"
-                f"Verfügbar: v{latest_version}\n\n"
-                f"Was ist neu:\n"
-                f"{release_notes[:500] if release_notes else 'Siehe GitHub für Details'}\n\n"
-                f"Möchten Sie jetzt aktualisieren?\n\n"
-                f"⚠️ Die Anwendung wird neu gestartet."
-            )
-            
-            if messagebox.askyesno("Update verfügbar", message):
-                self._install_update(download_url, updater)
+
+            # Erstelle ausführlichere Update-Info (nicht gekürzt)
+            if release_notes:
+                # Zeige vollständige Release Notes in seperatem Fenster
+                self._show_update_dialog(latest_version, release_notes, download_url, updater)
+            else:
+                # Fallback auf einfache Bestätigung
+                message = (
+                    f"🎉 Neue Version verfügbar!\n\n"
+                    f"Installiert: v{self.version}\n"
+                    f"Verfügbar: v{latest_version}\n\n"
+                    f"Möchten Sie jetzt aktualisieren?\n\n"
+                    f"⚠️ Die Anwendung wird neu gestartet."
+                )
+                if messagebox.askyesno("Update verfügbar", message):
+                    self._install_update(download_url, updater)
         else:
             self.update_status.configure(
                 text=f"✓ Aktuell (v{self.version})", 
@@ -3892,13 +4205,15 @@ class MainWindow(ctk.CTk):
             )
     
     def _install_update(self, download_url: str, updater):
-        """Installiert ein Update."""
-        # Progress-Dialog erstellen
+        """Installiert ein Update mit modeless Progress-Dialog (Issue: Modal progress window blockiert UI)."""
+        # Progress-Dialog erstellen (NICHT modal - allow interaction)
         progress_window = ctk.CTkToplevel(self)
         progress_window.title("Update wird installiert...")
-        progress_window.geometry("500x200")
+        progress_window.geometry("550x250")
         progress_window.transient(self)
-        progress_window.grab_set()
+        # WICHTIG: Kein grab_set() - Dialog ist modeless, User kann weiter arbeiten
+        progress_window.attributes("-topmost", True)  # Dialog immer sichtbar
+        progress_window.resizable(False, False)
         
         # Progress-Label
         progress_label = ctk.CTkLabel(
@@ -3928,30 +4243,49 @@ class MainWindow(ctk.CTk):
             self.after(0, lambda: status_label.configure(text=message))
         
         def install_thread():
-            """Installiert Update in separatem Thread."""
-            success, message = updater.download_and_install_update(
-                download_url, 
-                progress_callback
-            )
-            
-            # Ergebnis anzeigen
-            self.after(0, lambda: self._handle_update_result(
-                success, message, progress_window, updater
-            ))
-        
+            """Installiert Update in separatem Thread mit Fehlerbehandlung."""
+            try:
+                success, message = updater.download_and_install_update(
+                    download_url,
+                    progress_callback
+                )
+
+                # Ergebnis anzeigen
+                self.after(0, lambda: self._handle_update_result(
+                    success, message, progress_window, updater
+                ))
+            except Exception as e:
+                error_msg = f"❌ Unerwarteter Fehler bei Update-Installation:\n{str(e)}"
+                self.after(0, lambda: self._handle_update_result(
+                    False, error_msg, progress_window, updater
+                ))
+
         # Update in Thread starten
-        thread = threading.Thread(target=install_thread, daemon=True)
-        thread.start()
+        try:
+            thread = threading.Thread(target=install_thread, daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"Fehler beim Starten des Update-Threads: {e}")
+            progress_window.destroy()
+            messagebox.showerror("Fehler", f"Konnte Update-Thread nicht starten:\n{e}")
     
-    def _handle_update_result(self, success: bool, message: str, 
+    def _handle_update_result(self, success: bool, message: str,
                              progress_window, updater):
-        """Verarbeitet das Ergebnis der Update-Installation."""
-        progress_window.destroy()
-        
+        """Verarbeitet das Ergebnis der Update-Installation mit Fehlerbehandlung."""
+        try:
+            if progress_window and progress_window.winfo_exists():
+                progress_window.destroy()
+        except:
+            pass
+
         if success:
             if messagebox.askyesno("Update erfolgreich", message):
                 # Anwendung neu starten
-                updater.restart_application()
+                try:
+                    updater.restart_application()
+                except Exception as e:
+                    print(f"Fehler beim Neustart: {e}")
+                    messagebox.showerror("Fehler", f"Konnte Anwendung nicht neu starten:\n{e}")
         else:
             self.update_status.configure(text="✗ Update fehlgeschlagen", text_color="red")
             messagebox.showerror("Update fehlgeschlagen", message)

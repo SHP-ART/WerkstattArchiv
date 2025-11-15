@@ -35,6 +35,9 @@ class VehicleManager:
         """
         self.vehicles_file = vehicles_file
         self.vehicles: Dict[str, Vehicle] = {}  # fin → Vehicle
+        # Feature 13: FIN Lookup Cache - speichert häufig gesuchte FINs im Cache
+        self._fin_cache: Dict[str, List[str]] = {}  # fin → [kunden_nummern]
+        self._cache_max_size = 2000
         self._ensure_file_exists()
         self._load_vehicles()
     
@@ -53,7 +56,8 @@ class VehicleManager:
     def _load_vehicles(self):
         """Lädt alle Fahrzeuge aus vehicles.csv."""
         self.vehicles.clear()
-        
+        self._fin_cache.clear()  # Cache invalidieren beim Neuladen
+
         if not os.path.exists(self.vehicles_file):
             return
         
@@ -96,19 +100,31 @@ class VehicleManager:
     def find_customers_by_fin(self, fin: str) -> List[str]:
         """
         Findet alle Kundennummern zu einer FIN.
-        
+        Mit Cache für häufig gesuchte FINs (Feature 13: FIN Lookup Cache).
+
         Args:
             fin: Fahrgestellnummer
-            
+
         Returns:
             Liste von Kundennummern (normalerweise 0 oder 1 Einträge)
         """
         fin = fin.strip().upper()
-        
+
+        # 1. Cache prüfen (O(1) Dict-Lookup)
+        if fin in self._fin_cache:
+            return self._fin_cache[fin]
+
+        # 2. Fahrzeugliste durchsuchen
         if fin in self.vehicles:
-            return [self.vehicles[fin].kunden_nr]
-        
-        return []
+            result = [self.vehicles[fin].kunden_nr]
+        else:
+            result = []
+
+        # 3. Ins Cache speichern (mit Size-Limit)
+        if len(self._fin_cache) < self._cache_max_size:
+            self._fin_cache[fin] = result
+
+        return result
     
     def find_customers_by_kennzeichen(self, kennzeichen: str) -> List[str]:
         """
@@ -167,6 +183,9 @@ class VehicleManager:
         )
         
         self.vehicles[fin] = vehicle
+        # Cache-Eintrag invalidieren (falls bereits vorhanden)
+        if fin in self._fin_cache:
+            del self._fin_cache[fin]
         self._save_vehicles()
         return True
     

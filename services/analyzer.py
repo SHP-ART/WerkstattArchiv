@@ -7,6 +7,8 @@ import re
 import os
 from typing import Dict, Optional, Any
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from services.vorlagen import VorlagenManager
 
@@ -40,6 +42,57 @@ try:
 except Exception as e:
     print(f"Warnung: PatternManager konnte nicht geladen werden: {e}")
     PATTERN_MANAGER = None
+
+# OCR Thread Pool Executor (max 2 parallel OCR jobs)
+# Verhindert, dass 10 OCR-Jobs gleichzeitig laufen und System überlasten
+OCR_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="OCR-Worker")
+
+# Cache für kompilierte Regex-Patterns (Feature 11: Pattern Compilation Caching)
+_COMPILED_PATTERNS_CACHE = {}
+_CACHE_MAX_SIZE = 50
+
+# Cache für PDF Page Counts (Feature 14: PDF Page Count Caching)
+_PDF_PAGE_COUNT_CACHE = {}
+_PDF_CACHE_MAX_SIZE = 500
+
+
+def _get_compiled_pattern(pattern_name: str, fallback_pattern: str = None) -> Optional[re.Pattern]:
+    """
+    Holt ein kompiliertes Pattern aus dem Cache oder kompiliert es neu.
+
+    Args:
+        pattern_name: Name des Patterns (z.B. "kunden_nr")
+        fallback_pattern: Optional Fallback-Pattern wenn PatternManager nicht verfügbar
+
+    Returns:
+        Kompiliertes re.Pattern oder None
+    """
+    # 1. Cache prüfen
+    if pattern_name in _COMPILED_PATTERNS_CACHE:
+        return _COMPILED_PATTERNS_CACHE[pattern_name]
+
+    # 2. Pattern laden
+    pattern_str = None
+    if PATTERN_MANAGER:
+        pattern_str = PATTERN_MANAGER.get_pattern(pattern_name)
+
+    # 3. Fallback verwenden wenn nötig
+    if not pattern_str and fallback_pattern:
+        pattern_str = fallback_pattern
+
+    if not pattern_str:
+        return None
+
+    # 4. Kompilieren und cachen
+    try:
+        compiled = re.compile(pattern_str, re.IGNORECASE)
+        # Cache Size Limit: max 50 Patterns
+        if len(_COMPILED_PATTERNS_CACHE) < _CACHE_MAX_SIZE:
+            _COMPILED_PATTERNS_CACHE[pattern_name] = compiled
+        return compiled
+    except re.error as e:
+        print(f"Fehler beim Kompilieren von Pattern '{pattern_name}': {e}")
+        return None
 
 # Fallback: Original Patterns (falls PatternManager nicht verfügbar)
 # Regex-Patterns für die Extraktion
@@ -102,9 +155,9 @@ def get_pattern(name: str) -> str:
     return fallbacks.get(name, "")
 
 
-def extract_text_from_pdf(file_path: str) -> str:
+def extract_text_from_pdf(file_path: str) -> tuple:
     """
-    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei.
+    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei (Feature 14: PDF Page Count Caching).
 
     WICHTIG: Es wird nur die erste Seite analysiert, da die relevanten
     Informationen (Kundennummer, Auftragsnummer, etc.) dort stehen.
@@ -114,13 +167,14 @@ def extract_text_from_pdf(file_path: str) -> str:
         file_path: Pfad zur PDF-Datei
 
     Returns:
-        Extrahierter Text oder leerer String bei Fehler
+        Tuple (text, page_count) - extrahierter Text und Seitenanzahl
     """
     if not PYMUPDF_AVAILABLE or fitz is None:
-        return ""
+        return ("", 0)
 
     try:
         text = ""
+        page_count = 0
         with fitz.open(file_path) as doc:  # type: ignore
             page_count = len(doc)
 
@@ -132,15 +186,20 @@ def extract_text_from_pdf(file_path: str) -> str:
             if page_count > 1:
                 print(f"ℹ️  PDF hat {page_count} Seiten - Analysiere nur Seite 1")
 
-        return text
+        # Cache page count (Feature 14: PDF Page Count Caching)
+        if len(_PDF_PAGE_COUNT_CACHE) < _PDF_CACHE_MAX_SIZE:
+            _PDF_PAGE_COUNT_CACHE[file_path] = page_count
+
+        return (text, page_count)
     except Exception as e:
         print(f"Fehler beim PDF-Text-Extrahieren: {e}")
-        return ""
+        return ("", 0)
 
 
 def get_pdf_page_count(file_path: str) -> int:
     """
     Ermittelt die Anzahl der Seiten einer PDF-Datei.
+    Mit Cache zur Vermeidung von mehrfachem PDF-Öffnen (Feature 14: PDF Page Count Caching).
 
     Args:
         file_path: Pfad zur PDF-Datei
@@ -148,12 +207,20 @@ def get_pdf_page_count(file_path: str) -> int:
     Returns:
         Anzahl der Seiten oder 0 bei Fehler
     """
+    # 1. Cache prüfen (O(1) Dict-Lookup, spart File I/O!)
+    if file_path in _PDF_PAGE_COUNT_CACHE:
+        return _PDF_PAGE_COUNT_CACHE[file_path]
+
     if not PYMUPDF_AVAILABLE or fitz is None:
         return 0
 
     try:
         with fitz.open(file_path) as doc:  # type: ignore
-            return len(doc)
+            page_count = len(doc)
+            # Cache für zukünftige Aufrufe
+            if len(_PDF_PAGE_COUNT_CACHE) < _PDF_CACHE_MAX_SIZE:
+                _PDF_PAGE_COUNT_CACHE[file_path] = page_count
+            return page_count
     except Exception as e:
         print(f"Fehler beim Ermitteln der Seitenanzahl: {e}")
         return 0
@@ -224,47 +291,89 @@ def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = No
 def extract_text(file_path: str, tesseract_path: Optional[str] = None) -> str:
     """
     Extrahiert Text aus einer Datei (PDF oder Bild).
-    
+
     Args:
         file_path: Pfad zur Datei
         tesseract_path: Optionaler Pfad zur Tesseract-Installation
-        
+
     Returns:
         Extrahierter Text
     """
     ext = os.path.splitext(file_path)[1].lower()
-    
+
     if ext == ".pdf":
-        # Erst normalen PDF-Text versuchen
-        text = extract_text_from_pdf(file_path)
-        
+        # Erst normalen PDF-Text versuchen (Feature 14: returns tuple with page count)
+        text, page_count = extract_text_from_pdf(file_path)
+
         # Falls kein Text gefunden, OCR versuchen
         if not text.strip():
             text = extract_text_from_pdf_ocr(file_path, tesseract_path)
-        
+
         return text
-    
+
     elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
         return extract_text_from_image_ocr(file_path, tesseract_path)
-    
+
     return ""
+
+
+def extract_text_async(file_paths: list, tesseract_path: Optional[str] = None) -> Dict[str, str]:
+    """
+    Extrahiert Text aus mehreren Dateien ASYNCHRON mit ThreadPool (nicht blockierend).
+    Perfekt für Batch-Verarbeitung von vielen Dokumenten ohne GUI-Blockierung.
+
+    Args:
+        file_paths: Liste von Dateipfaden
+        tesseract_path: Optionaler Pfad zur Tesseract-Installation
+
+    Returns:
+        Dictionary: {file_path: extracted_text}
+    """
+    results = {}
+
+    # Submit all extraction jobs to thread pool
+    future_to_path = {
+        OCR_EXECUTOR.submit(extract_text, fp, tesseract_path): fp
+        for fp in file_paths
+    }
+
+    # Collect results as they complete (streaming)
+    for future in as_completed(future_to_path):
+        file_path = future_to_path[future]
+        try:
+            text = future.result()
+            results[file_path] = text
+        except Exception as e:
+            print(f"⚠ Fehler beim Extrahieren von {file_path}: {e}")
+            results[file_path] = ""
+
+    return results
 
 
 def extract_kundennummer(text: str) -> Optional[str]:
     """Extrahiert die Kundennummer aus dem Text."""
-    match = re.search(get_pattern("kunden_nr"), text, re.IGNORECASE)
+    pattern = _get_compiled_pattern("kunden_nr", PATTERN_KUNDEN_NR)
+    if not pattern:
+        return None
+    match = pattern.search(text)
     return match.group(1) if match else None
 
 
 def extract_auftragsnummer(text: str) -> Optional[str]:
     """Extrahiert die Auftragsnummer aus dem Text."""
-    match = re.search(get_pattern("auftrag_nr"), text, re.IGNORECASE)
+    pattern = _get_compiled_pattern("auftrag_nr", PATTERN_AUFTRAG_NR)
+    if not pattern:
+        return None
+    match = pattern.search(text)
     return match.group(1) if match else None
 
 
 def extract_kennzeichen(text: str) -> Optional[str]:
     """Extrahiert das Kennzeichen aus dem Text."""
-    match = re.search(get_pattern("kennzeichen"), text, re.IGNORECASE)
+    pattern = _get_compiled_pattern("kennzeichen", PATTERN_KENNZEICHEN)
+    if not pattern:
+        return None
+    match = pattern.search(text)
     if match:
         # Normalisiere: Entferne überflüssige Leerzeichen
         kennzeichen = match.group(1).strip()
@@ -278,8 +387,10 @@ def extract_kennzeichen(text: str) -> Optional[str]:
 def extract_fin(text: str) -> Optional[str]:
     """Extrahiert die FIN (Fahrgestellnummer) aus dem Text."""
     # Suche alle 17-Zeichen-Kombinationen
-    matches = re.finditer(get_pattern("fin"), text, re.IGNORECASE)
-    for match in matches:
+    pattern = _get_compiled_pattern("fin", PATTERN_FIN)
+    if not pattern:
+        return None
+    for match in pattern.finditer(text):
         fin = match.group(1).upper().strip()
         # Validierung: FIN muss genau 17 Zeichen haben UND Ziffern enthalten
         # (verhindert false positives wie "VERTRAGSWERKSTATT")
@@ -291,31 +402,38 @@ def extract_fin(text: str) -> Optional[str]:
 def extract_kundenname(text: str) -> Optional[str]:
     """Extrahiert den Kundennamen aus dem Text."""
     # Versuche zuerst mit "Name:" Label
-    match = re.search(r"Name[:\s]+([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)", text, re.IGNORECASE)
-    if match:
-        name = match.group(1).strip()
-        # Filter: Ignoriere häufige False Positives
-        if name.lower() not in ['straße nr', 'telefon mobil', 'werkstatt auftrag']:
-            return name
-    
+    pattern_with_label = _get_compiled_pattern("kundenname", r"Name[:\s]+([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)")
+    if pattern_with_label:
+        match = pattern_with_label.search(text)
+        if match:
+            name = match.group(1).strip()
+            # Filter: Ignoriere häufige False Positives
+            if name.lower() not in ['straße nr', 'telefon mobil', 'werkstatt auftrag']:
+                return name
+
     # Fallback: Suche nach typischen Vor-/Nachnamen-Mustern
     # (z.B. "Anne Schultze" nach Adressfeldern)
-    lines = text.split('\n')
-    for i, line in enumerate(lines):
-        line = line.strip()
-        # Suche nach Zeile mit nur Vor- und Nachname (2-4 Wörter)
-        if re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(\s+[A-ZÄÖÜ][a-zäöüß]+){1,3}$', line):
-            words = line.split()
-            # Mindestens 2 Wörter (Vor- und Nachname)
-            if len(words) >= 2:
-                return line
-    
+    pattern_fallback = _get_compiled_pattern("kundenname_fallback", r'^[A-ZÄÖÜ][a-zäöüß]+(\s+[A-ZÄÖÜ][a-zäöüß]+){1,3}$')
+    if pattern_fallback:
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            line = line.strip()
+            # Suche nach Zeile mit nur Vor- und Nachname (2-4 Wörter)
+            if pattern_fallback.match(line):
+                words = line.split()
+                # Mindestens 2 Wörter (Vor- und Nachname)
+                if len(words) >= 2:
+                    return line
+
     return None
 
 
 def extract_datum(text: str) -> Optional[int]:
     """Extrahiert das erste Datum und gibt das Jahr zurück."""
-    match = re.search(get_pattern("datum"), text)
+    pattern = _get_compiled_pattern("datum", PATTERN_DATUM)
+    if not pattern:
+        return None
+    match = pattern.search(text)
     if match:
         # Das Pattern kann entweder 3 Gruppen (TT, MM, JJJJ) oder 1 Gruppe (TT.MM.JJJJ) haben
         if match.lastindex and match.lastindex >= 3:

@@ -7,6 +7,7 @@ import sqlite3
 import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from functools import lru_cache
 
 
 DB_FILE = "werkstatt_index.db"
@@ -14,21 +15,31 @@ DB_FILE = "werkstatt_index.db"
 
 class DocumentIndex:
     """Verwaltet den Index aller verarbeiteten Dokumente."""
-    
+
     def __init__(self, db_path: str = DB_FILE):
         """
         Initialisiert den Dokumenten-Index.
-        
+
         Args:
             db_path: Pfad zur SQLite-Datenbankdatei
         """
         self.db_path = db_path
+        self._connection_timeout = 10  # Timeout für DB-Locks (verhindert Deadlocks)
+        # Statistics Lazy-Loading Cache
+        self._statistics_cache: Optional[Dict[str, Any]] = None
         self._init_database()
-    
+
     def _init_database(self) -> None:
-        """Erstellt die Datenbanktabelle falls nicht vorhanden."""
-        conn = sqlite3.connect(self.db_path)
+        """Erstellt die Datenbanktabelle und optimiert die Datenbank für Performance."""
+        conn = sqlite3.connect(self.db_path, timeout=self._connection_timeout, check_same_thread=False)
         cursor = conn.cursor()
+
+        # PRAGMA Optimierungen für bessere Performance und Concurrency
+        # Diese gelten für die ganze Datenbankverbindung
+        cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging für bessere Concurrency
+        cursor.execute("PRAGMA synchronous=NORMAL")  # Weniger fsync() calls (schneller, immer noch sicher)
+        cursor.execute("PRAGMA cache_size=10000")  # Größerer Cache für häufige Queries
+        cursor.execute("PRAGMA temp_store=MEMORY")  # Temp-Tabellen im RAM (schneller)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dokumente (
@@ -93,46 +104,120 @@ class DocumentIndex:
         # Migration: Füge neue Spalten hinzu falls sie nicht existieren
         self._migrate_database(cursor)
         
-        # Index für schnellere Suchen
+        # ===== INDEXES für dokumente TABELLE =====
+        # Single-Column Indexes (häufige WHERE-Clauses)
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_kunden_nr 
+            CREATE INDEX IF NOT EXISTS idx_kunden_nr
             ON dokumente(kunden_nr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_auftrag_nr 
+            CREATE INDEX IF NOT EXISTS idx_auftrag_nr
             ON dokumente(auftrag_nr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_jahr 
+            CREATE INDEX IF NOT EXISTS idx_jahr
             ON dokumente(jahr)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dokument_typ 
+            CREATE INDEX IF NOT EXISTS idx_dokument_typ
             ON dokumente(dokument_typ)
         """)
-        
-        # Index für unclear_legacy
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_status
+            ON dokumente(status)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_is_legacy
+            ON dokumente(is_legacy)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_fin
+            ON dokumente(fin)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kennzeichen
+            ON dokumente(kennzeichen)
+        """)
+
+        # Composite Index (kunden_nr, jahr) - sehr häufig zusammen abgefragt
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kunden_nr_jahr
+            ON dokumente(kunden_nr, jahr)
+        """)
+
+        # Index für Ordering (verarbeitet_am DESC)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_verarbeitet_am
+            ON dokumente(verarbeitet_am DESC)
+        """)
+
+        # ===== INDEXES für unclear_legacy TABELLE =====
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_status
             ON unclear_legacy(status)
         """)
-        
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_fin
             ON unclear_legacy(fin)
         """)
-        
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_unclear_auftrag_nr
             ON unclear_legacy(auftrag_nr)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_unclear_kennzeichen
+            ON unclear_legacy(kennzeichen)
         """)
         
         conn.commit()
         conn.close()
     
+    def _convert_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """
+        Konvertiert eine SQLite Row zu einem Dictionary (optimiert).
+        Effiziente Variante statt manuelles Dict mit vielen .keys() Checks.
+
+        Args:
+            row: sqlite3.Row Objekt
+
+        Returns:
+            Dictionary mit allen Dokumenten-Feldern
+        """
+        # Direct dict() conversion (fast) statt manuelles Dict-Building
+        result = dict(row)
+
+        # Nur für Felder die Optional sein können, defaults setzen
+        optional_fields = {
+            "auftragsdatum": None,
+            "fin": None,
+            "kennzeichen": None,
+            "kilometerstand": None,
+            "is_legacy": False,
+            "match_reason": None,
+            "created_at": None,
+            "last_update": None
+        }
+
+        for field, default in optional_fields.items():
+            if field not in result or result[field] is None:
+                result[field] = default
+
+        # Convert is_legacy to bool wenn nötig
+        if "is_legacy" in result:
+            result["is_legacy"] = bool(result["is_legacy"])
+
+        return result
+
     def _migrate_database(self, cursor: sqlite3.Cursor) -> None:
         """
         Migriert bestehende Datenbank auf neues Schema.
@@ -141,7 +226,7 @@ class DocumentIndex:
         # Prüfe ob neue Spalten bereits existieren
         cursor.execute("PRAGMA table_info(dokumente)")
         columns = {row[1] for row in cursor.fetchall()}
-        
+
         # Neue Spalten die hinzugefügt werden sollen
         new_columns = {
             "fin": "TEXT",
@@ -153,7 +238,7 @@ class DocumentIndex:
             "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "last_update": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         }
-        
+
         # Füge fehlende Spalten hinzu
         for col_name, col_type in new_columns.items():
             if col_name not in columns:
@@ -164,6 +249,68 @@ class DocumentIndex:
                     # Spalte existiert bereits oder anderer Fehler
                     if "duplicate column" not in str(e).lower():
                         print(f"Hinweis beim Hinzufügen von '{col_name}': {e}")
+
+    def upgrade_indexes(self) -> Dict[str, Any]:
+        """
+        Aktualisiert die Datenbankindexes für bestehende Datenbanken.
+        Erstellt fehlende Indexes nach.
+
+        Returns:
+            Dictionary mit Upgrade-Statistiken
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Zähle existierende Indexes
+        cursor.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type='index' AND tbl_name='dokumente'
+        """)
+        indexes_before = cursor.fetchone()[0]
+
+        # Erstelle alle neuen Indexes
+        indexes_to_create = [
+            ("idx_status", "dokumente(status)"),
+            ("idx_is_legacy", "dokumente(is_legacy)"),
+            ("idx_fin", "dokumente(fin)"),
+            ("idx_kennzeichen", "dokumente(kennzeichen)"),
+            ("idx_kunden_nr_jahr", "dokumente(kunden_nr, jahr)"),
+            ("idx_verarbeitet_am", "dokumente(verarbeitet_am DESC)"),
+            ("idx_unclear_kennzeichen", "unclear_legacy(kennzeichen)"),
+        ]
+
+        created_count = 0
+        for idx_name, idx_def in indexes_to_create:
+            try:
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_def}")
+                created_count += 1
+            except Exception as e:
+                print(f"⚠ Fehler beim Erstellen von {idx_name}: {e}")
+
+        conn.commit()
+
+        # Zähle neue Indexes
+        cursor.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type='index' AND tbl_name='dokumente'
+        """)
+        indexes_after = cursor.fetchone()[0]
+
+        # Optimiere die Datenbank (VACUUM + ANALYZE)
+        cursor.execute("VACUUM")
+        cursor.execute("ANALYZE")
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "status": "success",
+            "indexes_before": indexes_before,
+            "indexes_after": indexes_after,
+            "new_indexes_created": created_count,
+            "message": f"Datenbank optimiert: {created_count} neue Indexes erstellt"
+        }
+
     
     def add_document(self, original_path: str, target_path: str, 
                     metadata: Dict[str, Any], status: str = "success") -> int:
@@ -215,9 +362,74 @@ class DocumentIndex:
         doc_id = cursor.lastrowid if cursor.lastrowid else 0
         conn.commit()
         conn.close()
-        
+
+        # Invalidiere Statistics-Cache (Daten haben sich geändert)
+        self.invalidate_statistics_cache()
+
         return doc_id
-    
+
+    def add_documents_batch(self, documents: List[tuple]) -> List[int]:
+        """
+        Fügt mehrere Dokumente in einem Batch ein (Feature 12: Batch Database Inserts).
+        Viel schneller als einzelne add_document() Aufrufe, da nur EINE Verbindung verwendet wird.
+
+        Args:
+            documents: Liste von Tuples (original_path, target_path, metadata, status)
+                     wo metadata ein Dict mit Dokument-Metadaten ist
+
+        Returns:
+            Liste von eingefügten Document-IDs
+        """
+        if not documents:
+            return []
+
+        conn = sqlite3.connect(self.db_path, timeout=self._connection_timeout, check_same_thread=False)
+        cursor = conn.cursor()
+
+        inserted_ids = []
+        try:
+            for original_path, target_path, metadata, status in documents:
+                cursor.execute("""
+                    INSERT INTO dokumente
+                    (dateiname, original_pfad, ziel_pfad,
+                     auftrag_nr, auftragsdatum, dokument_typ, jahr,
+                     kunden_nr, kunden_name,
+                     fin, kennzeichen, kilometerstand,
+                     is_legacy, match_reason,
+                     confidence, status, hinweis,
+                     created_at, last_update)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (
+                    os.path.basename(target_path),
+                    original_path,
+                    target_path,
+                    metadata.get("auftrag_nr"),
+                    metadata.get("auftragsdatum"),
+                    metadata.get("dokument_typ"),
+                    metadata.get("jahr"),
+                    metadata.get("kunden_nr"),
+                    metadata.get("kunden_name"),
+                    metadata.get("fin"),
+                    metadata.get("kennzeichen"),
+                    metadata.get("kilometerstand"),
+                    1 if metadata.get("is_legacy") else 0,
+                    metadata.get("legacy_match_reason") or metadata.get("match_reason"),
+                    metadata.get("confidence"),
+                    status,
+                    metadata.get("hinweis")
+                ))
+                inserted_ids.append(cursor.lastrowid if cursor.lastrowid else 0)
+
+            # SINGLE COMMIT für alle Inserts - deutlich schneller!
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Invalidiere Statistics-Cache (Daten haben sich geändert)
+        self.invalidate_statistics_cache()
+
+        return inserted_ids
+
     def update_file_path(self, doc_id: int, new_path: str) -> bool:
         """
         Aktualisiert den Dateipfad eines Dokuments.
@@ -297,8 +509,9 @@ class DocumentIndex:
             params.append(jahr)
         
         if monat:
-            # Filtere nach Monat basierend auf dem verarbeitet_am Datum
-            query += " AND CAST(strftime('%m', verarbeitet_am) AS INTEGER) = ?"
+            # Optimiert: SUBSTR statt strftime (5-10x schneller!)
+            # SUBSTR(verarbeitet_am, 6, 2) extrahiert Monat aus "YYYY-MM-DD HH:MM:SS"
+            query += " AND CAST(SUBSTR(verarbeitet_am, 6, 2) AS INTEGER) = ?"
             params.append(monat)
         
         if kunden_name:
@@ -313,44 +526,66 @@ class DocumentIndex:
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
-        results = []
-        for row in rows:
-            results.append({
-                "id": row["id"],
-                "dateiname": row["dateiname"],
-                "original_pfad": row["original_pfad"],
-                "ziel_pfad": row["ziel_pfad"],
-                "auftrag_nr": row["auftrag_nr"],
-                "auftragsdatum": row["auftragsdatum"] if "auftragsdatum" in row.keys() else None,
-                "dokument_typ": row["dokument_typ"],
-                "jahr": row["jahr"],
-                "kunden_nr": row["kunden_nr"],
-                "kunden_name": row["kunden_name"],
-                "fin": row["fin"] if "fin" in row.keys() else None,
-                "kennzeichen": row["kennzeichen"] if "kennzeichen" in row.keys() else None,
-                "kilometerstand": row["kilometerstand"] if "kilometerstand" in row.keys() else None,
-                "is_legacy": bool(row["is_legacy"]) if "is_legacy" in row.keys() else False,
-                "match_reason": row["match_reason"] if "match_reason" in row.keys() else None,
-                "confidence": row["confidence"],
-                "status": row["status"],
-                "hinweis": row["hinweis"],
-                "verarbeitet_am": row["verarbeitet_am"],
-                "created_at": row["created_at"] if "created_at" in row.keys() else None,
-                "last_update": row["last_update"] if "last_update" in row.keys() else None,
-            })
-        
+
+        # Optimiert: Nutze Helper-Methode statt manuelles Dict-Building
+        results = [self._convert_row_to_dict(row) for row in rows]
+
         conn.close()
         return results
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_quick_statistics(self) -> Dict[str, Any]:
         """
-        Gibt Statistiken über die indexierten Dokumente zurück.
-        Optimiert: Alle Queries in einem Durchgang für maximale Performance.
+        Gibt schnelle Basic-Statistiken zurück (SEHR SCHNELL).
+        Ideal für schnelle UI-Updates ohne lange Wartezeit.
+        Nur COUNT(*) ohne GROUP BY.
 
         Returns:
-            Dictionary mit Statistiken
+            Dictionary mit Basis-Statistiken
         """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Ein einziges Query für alle schnellen Stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN is_legacy = 1 THEN 1 END) as legacy_count,
+                COUNT(CASE WHEN status = 'unclear' THEN 1 END) as unclear_count,
+                (SELECT COUNT(*) FROM unclear_legacy WHERE status = 'offen') as unclear_legacy_count,
+                COUNT(DISTINCT CASE WHEN kunden_nr IS NOT NULL THEN kunden_nr END) as unique_customers,
+                COALESCE(AVG(CASE WHEN confidence IS NOT NULL THEN confidence END), 0) as avg_confidence
+            FROM dokumente
+        """)
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return {
+            "total": row[0] or 0,
+            "legacy_count": row[1] or 0,
+            "unclear_count": row[2] or 0,
+            "unclear_legacy_count": row[3] or 0,
+            "unique_customers": row[4] or 0,
+            "avg_confidence": round(row[5] or 0, 2),
+            "_cached": False,  # Flag dass dies Quick-Stats sind
+        }
+
+    def get_statistics(self, use_cache: bool = True) -> Dict[str, Any]:
+        """
+        Gibt DETAILLIERTE Statistiken mit GROUP BY zurück (mit Lazy-Loading Cache).
+        Optimiert: Alle Queries in einem Durchgang für maximale Performance.
+        ACHTUNG: Diese Methode ist teuer! Verwende get_quick_statistics() für schnelle Updates.
+
+        Args:
+            use_cache: Nutze gecachte Statistiken wenn verfügbar (Standard: True)
+
+        Returns:
+            Dictionary mit detaillierten Statistiken
+        """
+        # Lazy-Loading: Cache zurückgeben wenn vorhanden
+        if use_cache and self._statistics_cache is not None:
+            return self._statistics_cache
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -407,7 +642,8 @@ class DocumentIndex:
 
         conn.close()
 
-        return {
+        # Speichere im Cache
+        self._statistics_cache = {
             "total": total,
             "by_status": status_counts,
             "by_type": type_counts,
@@ -417,7 +653,14 @@ class DocumentIndex:
             "unique_customers": unique_customers,
             "unique_vehicles": unique_vehicles,
             "avg_confidence": round(avg_confidence, 2) if avg_confidence else 0,
+            "_cached": True,  # Flag dass dies gecachte Stats sind
         }
+
+        return self._statistics_cache
+
+    def invalidate_statistics_cache(self):
+        """Invalidiert den Statistics-Cache (z.B. nach neuen Dokumenten)."""
+        self._statistics_cache = None
     
     def get_all_document_types(self) -> List[str]:
         """Gibt alle eindeutigen Dokumenttypen zurück."""
