@@ -14,21 +14,29 @@ DB_FILE = "werkstatt_index.db"
 
 class DocumentIndex:
     """Verwaltet den Index aller verarbeiteten Dokumente."""
-    
+
     def __init__(self, db_path: str = DB_FILE):
         """
         Initialisiert den Dokumenten-Index.
-        
+
         Args:
             db_path: Pfad zur SQLite-Datenbankdatei
         """
         self.db_path = db_path
+        self._connection_timeout = 10  # Timeout für DB-Locks (verhindert Deadlocks)
         self._init_database()
-    
+
     def _init_database(self) -> None:
-        """Erstellt die Datenbanktabelle falls nicht vorhanden."""
-        conn = sqlite3.connect(self.db_path)
+        """Erstellt die Datenbanktabelle und optimiert die Datenbank für Performance."""
+        conn = sqlite3.connect(self.db_path, timeout=self._connection_timeout, check_same_thread=False)
         cursor = conn.cursor()
+
+        # PRAGMA Optimierungen für bessere Performance und Concurrency
+        # Diese gelten für die ganze Datenbankverbindung
+        cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging für bessere Concurrency
+        cursor.execute("PRAGMA synchronous=NORMAL")  # Weniger fsync() calls (schneller, immer noch sicher)
+        cursor.execute("PRAGMA cache_size=10000")  # Größerer Cache für häufige Queries
+        cursor.execute("PRAGMA temp_store=MEMORY")  # Temp-Tabellen im RAM (schneller)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dokumente (

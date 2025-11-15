@@ -104,7 +104,7 @@ class MainWindow(ctk.CTk):
             "Unklare_refreshed": False,
             "Virtuelle_refreshed": False
         }
-        
+
         # Cache für vorberechnete Daten (Performance-Optimierung)
         self.cached_stats = {}
         self.cached_virtual_count = 0
@@ -112,7 +112,12 @@ class MainWindow(ctk.CTk):
         # Cache für Dropdown-Liste
         self._customer_dropdown_cache = None
         self._customer_dropdown_cache_time = 0
-        
+
+        # Pagination für Suchergebnisse (Performance-Optimierung)
+        self.search_results_all = []  # Alle Suchergebnisse
+        self.search_results_page = 1  # Aktuelle Seite
+        self.search_results_per_page = 50  # Ergebnisse pro Seite
+
         # Log-Buffer für Log-Tab
         self.log_buffer = []
         self.max_log_entries = 500  # Maximal 500 Log-Einträge im Speicher (Performance)
@@ -2971,10 +2976,14 @@ class MainWindow(ctk.CTk):
         self.search_jahr.set("Alle")
         self.search_monat.set("Alle")
         self.search_status.configure(text="")
-        
+
         # Ergebnisse löschen
         for widget in self.search_results_container.winfo_children():
             widget.destroy()
+
+        # Reset Pagination
+        self.search_results_all = []
+        self.search_results_page = 1
     
     def show_statistics(self):
         """Zeigt Statistiken über die indexierten Dokumente (nutzt Cache)."""
@@ -3115,21 +3124,85 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("Fehler", f"Fehler beim Laden der Statistiken:\n{str(e)}")
     
     def _display_search_results(self, results: List[Dict[str, Any]]):
-        """Zeigt die Suchergebnisse in der Tabelle an."""
+        """Zeigt die Suchergebnisse mit Pagination an."""
+        # Speichere alle Ergebnisse und setze auf Seite 1
+        self.search_results_all = results
+        self.search_results_page = 1
+
+        # Zeige Seite 1
+        self._show_search_page(1)
+
+    def _show_search_page(self, page: int):
+        """Zeigt eine bestimmte Seite der Suchergebnisse mit Pagination-Controls."""
         # Alte Ergebnisse löschen
         for widget in self.search_results_container.winfo_children():
             widget.destroy()
-        
-        if not results:
-            no_results = ctk.CTkLabel(self.search_results_container, 
+
+        if not self.search_results_all:
+            no_results = ctk.CTkLabel(self.search_results_container,
                                      text="Keine Dokumente gefunden",
                                      font=ctk.CTkFont(size=14))
             no_results.pack(pady=20)
             return
-        
-        # Ergebnisse anzeigen
-        for result in results:
-            self._add_search_result_row(result)
+
+        # Berechne Pagination
+        total_results = len(self.search_results_all)
+        total_pages = (total_results + self.search_results_per_page - 1) // self.search_results_per_page
+        page = max(1, min(page, total_pages))  # Validate page
+        self.search_results_page = page
+
+        # Berechne Start- und End-Index
+        start_idx = (page - 1) * self.search_results_per_page
+        end_idx = min(start_idx + self.search_results_per_page, total_results)
+
+        # Zeige Ergebnisse für diese Seite
+        for i in range(start_idx, end_idx):
+            self._add_search_result_row(self.search_results_all[i])
+
+        # Pagination-Controls hinzufügen (nur wenn > 1 Seite)
+        if total_pages > 1:
+            self._add_pagination_controls(page, total_pages, total_results)
+
+    def _add_pagination_controls(self, current_page: int, total_pages: int, total_results: int):
+        """Fügt Pagination-Controls hinzu (Previous, Next, Page Info)."""
+        pagination_frame = ctk.CTkFrame(self.search_results_container)
+        pagination_frame.pack(fill="x", padx=5, pady=10)
+
+        # Linker Spacer
+        ctk.CTkLabel(pagination_frame, text="").pack(side="left", expand=True)
+
+        # Previous Button
+        prev_btn = ctk.CTkButton(
+            pagination_frame,
+            text="← Zurück",
+            width=100,
+            command=lambda: self._show_search_page(current_page - 1),
+            state="normal" if current_page > 1 else "disabled"
+        )
+        prev_btn.pack(side="left", padx=5)
+
+        # Page Info
+        results_start = (current_page - 1) * self.search_results_per_page + 1
+        results_end = min(current_page * self.search_results_per_page, total_results)
+        page_info = ctk.CTkLabel(
+            pagination_frame,
+            text=f"Seite {current_page}/{total_pages} ({results_start}-{results_end} von {total_results})",
+            font=ctk.CTkFont(size=12)
+        )
+        page_info.pack(side="left", padx=10)
+
+        # Next Button
+        next_btn = ctk.CTkButton(
+            pagination_frame,
+            text="Weiter →",
+            width=100,
+            command=lambda: self._show_search_page(current_page + 1),
+            state="normal" if current_page < total_pages else "disabled"
+        )
+        next_btn.pack(side="left", padx=5)
+
+        # Rechter Spacer
+        ctk.CTkLabel(pagination_frame, text="").pack(side="left", expand=True)
     
     def _add_search_result_row(self, result: Dict[str, Any]):
         """Fügt eine Ergebniszeile zur Suchtabelle hinzu."""
