@@ -25,18 +25,18 @@ class VirtualCustomerManager:
     def find_files_with_customer(self, kunden_nr: str) -> List[str]:
         """
         Findet alle Dateien im Archiv, die eine bestimmte Kundennummer enthalten.
-        
+
         Args:
             kunden_nr: Die zu suchende Kundennummer
-            
+
         Returns:
             Liste von Dateipfaden
         """
         files_found = []
-        
+
         if not os.path.exists(self.root_dir):
             return files_found
-        
+
         # Durchsuche alle Unterverzeichnisse
         for root, dirs, files in os.walk(self.root_dir):
             for filename in files:
@@ -44,8 +44,39 @@ class VirtualCustomerManager:
                 if kunden_nr in filename:
                     file_path = os.path.join(root, filename)
                     files_found.append(file_path)
-        
+
         return files_found
+
+    def get_all_customer_file_counts(self) -> Dict[str, int]:
+        """
+        Ermittelt Dateianzahl für alle Kunden in EINEM os.walk() Durchgang (Performance-Optimierung).
+
+        Viel schneller als find_files_with_customer() für jeden Kunden einzeln zu aufrufen!
+        Statt 100 x os.walk(), nur 1x - 100x schneller!
+
+        Returns:
+            Dict: {kunden_nr: file_count}
+        """
+        file_counts = {}
+
+        if not os.path.exists(self.root_dir):
+            return file_counts
+
+        # EINMALIGER os.walk() Durchgang
+        for root, dirs, files in os.walk(self.root_dir):
+            for filename in files:
+                # Extrahiere Kundennummer aus Dateinamen
+                # Format: "...kunden_nr..." (z.B. VK0001, 12345, etc.)
+
+                # Versuche Kundennummern zu extrahieren (einfache Heuristik)
+                import re
+                # Suche nach Kundennummern: VKxxxx oder Ziffern
+                matches = re.findall(r'(VK\d{4}|10\d{3}|11\d{3}|12\d{3})', filename)
+
+                for kunden_nr in matches:
+                    file_counts[kunden_nr] = file_counts.get(kunden_nr, 0) + 1
+
+        return file_counts
     
     def replace_customer_in_filename(self, old_kunden_nr: str, new_kunden_nr: str,
                                      new_customer_name: str) -> Tuple[int, List[str]]:
