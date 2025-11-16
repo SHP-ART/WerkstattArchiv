@@ -260,17 +260,38 @@ class MainWindow(ctk.CTk):
         self.loading_frame = ctk.CTkFrame(self)
         self.loading_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
         
-        # Logo laden und anzeigen
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
-                                 "logo", "ChatGPT Image 15. Nov. 2025, 07_48_25.png")
+        # Logo laden und anzeigen (robust, mit Fallbacks)
         try:
-            logo_image = Image.open(logo_path)
-            logo_image = logo_image.resize((200, 200), Image.Resampling.LANCZOS)
-            logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(200, 200))
-            
-            logo_label = ctk.CTkLabel(self.loading_frame, image=logo_photo, text="")
-            logo_label.pack(pady=(80, 20))
-            logo_label.image = logo_photo  # Referenz behalten
+            base_dir = os.path.dirname(os.path.dirname(__file__))
+            candidate_dirs = [
+                os.path.join(base_dir, "logo"),
+                base_dir
+            ]
+            candidate_names = [
+                "Logo.jpg", "logo.jpg", "Logo.jpeg", "logo.jpeg",
+                "Logo.png", "logo.png"
+            ]
+
+            logo_path = None
+            for d in candidate_dirs:
+                for name in candidate_names:
+                    p = os.path.join(d, name)
+                    if os.path.exists(p):
+                        logo_path = p
+                        break
+                if logo_path:
+                    break
+
+            if logo_path:
+                logo_image = Image.open(logo_path)
+                logo_image = logo_image.resize((200, 200), Image.Resampling.LANCZOS)
+                logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(200, 200))
+
+                logo_label = ctk.CTkLabel(self.loading_frame, image=logo_photo, text="")
+                logo_label.pack(pady=(80, 20))
+                logo_label.image = logo_photo  # Referenz behalten
+            else:
+                print("ℹ️ Kein Logo gefunden (Logo.jpg/.png). Fahre ohne Bild fort.")
         except Exception as e:
             print(f"⚠️ Logo konnte nicht geladen werden: {e}")
         
@@ -2173,7 +2194,30 @@ class MainWindow(ctk.CTk):
         # Speichere Ordnerstruktur-Einstellungen
         new_config["folder_structure"] = self.folder_structure_manager.get_config()
         
-        # WICHTIG: Prüfe ob root_dir geändert wurde
+        # SCHRITT 1: Prüfe Unterschiede zum letzten Backup
+        backup_comparison = self.config_backup_manager.compare_with_current(new_config)
+        
+        if backup_comparison["backup_exists"] and backup_comparison["has_differences"]:
+            # Zeige Dialog mit Unterschieden
+            result = self._show_backup_comparison_dialog(backup_comparison, new_config)
+            
+            if result == "CANCEL":
+                self.settings_status.configure(
+                    text="⚠️ Speichern abgebrochen",
+                    text_color="orange"
+                )
+                return
+            elif result == "USE_BACKUP":
+                # Lade Backup-Config
+                restored_config = self.config_backup_manager.restore_backup()
+                if restored_config:
+                    new_config = restored_config
+                    self.add_log("INFO", "Backup-Config übernommen", 
+                                "Einstellungen aus Backup wiederhergestellt")
+                    # Aktualisiere GUI
+                    self._reload_settings_in_gui()
+        
+        # SCHRITT 2: Prüfe ob root_dir geändert wurde (Archiv-Config-Check)
         old_root_dir = self.config.get("root_dir", "")
         new_root_dir = new_config.get("root_dir", "")
         
@@ -2470,6 +2514,224 @@ class MainWindow(ctk.CTk):
         info_bottom = ctk.CTkLabel(
             button_frame,
             text="💡 Tipp: Wenn du mit einem bestehenden Archiv arbeitest, wähle 'Archiv-Config übernehmen'",
+            font=ctk.CTkFont(size=10, slant="italic"),
+            text_color="gray"
+        )
+        info_bottom.pack(pady=5)
+        
+        # Warte auf Benutzer-Entscheidung
+        self.wait_window(dialog)
+        
+        return result["choice"]
+    
+    def _show_backup_comparison_dialog(self, comparison: Dict[str, Any], 
+                                      current_config: Dict[str, Any]) -> str:
+        """
+        Zeigt Dialog zum Vergleich mit gesicherter Config (data/config_backup.json).
+        
+        Args:
+            comparison: Vergleichsergebnis von compare_with_current()
+            current_config: Aktuelle Config die gespeichert werden soll
+            
+        Returns:
+            "CONTINUE" - Mit neuen Einstellungen fortfahren
+            "USE_BACKUP" - Backup-Config übernehmen
+            "CANCEL" - Abbrechen
+        """
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("⚠️ Einstellungen haben sich geändert")
+        dialog.geometry("950x750")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        result = {"choice": "CONTINUE"}  # Default: Weitermachen
+        
+        # Header
+        header_frame = ctk.CTkFrame(dialog)
+        header_frame.pack(fill="x", padx=20, pady=20)
+        
+        title = ctk.CTkLabel(
+            header_frame,
+            text="🔍 Änderungen an wichtigen Einstellungen erkannt",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        title.pack(pady=10)
+        
+        backup_time = comparison.get("backup_timestamp", "unbekannt")[:19]
+        backup_ver = comparison.get("backup_version", "unbekannt")
+        
+        info_text = (
+            f"Die folgenden Einstellungen unterscheiden sich vom letzten Backup:\n"
+            f"💾 Backup vom: {backup_time} (Version {backup_ver})\n\n"
+            f"Möchtest du die neuen Einstellungen speichern oder zum Backup zurückkehren?"
+        )
+        info_label = ctk.CTkLabel(
+            header_frame,
+            text=info_text,
+            font=ctk.CTkFont(size=11),
+            justify="left"
+        )
+        info_label.pack(pady=10)
+        
+        # Unterschiede anzeigen
+        diff_frame = ctk.CTkFrame(dialog)
+        diff_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Scrollable Frame für Unterschiede
+        scroll = ctk.CTkScrollableFrame(diff_frame)
+        scroll.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Pfad-Unterschiede
+        if comparison["path_differences"]:
+            path_title = ctk.CTkLabel(
+                scroll,
+                text="📁 Pfad-Einstellungen:",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            path_title.pack(pady=(10, 5), anchor="w")
+            
+            # Header
+            header_row = ctk.CTkFrame(scroll)
+            header_row.pack(fill="x", pady=5)
+            
+            ctk.CTkLabel(header_row, text="Einstellung", width=180,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            ctk.CTkLabel(header_row, text="Neue Einstellung", width=280,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            ctk.CTkLabel(header_row, text="Backup-Einstellung", width=280,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            
+            # Unterschiede
+            for key, current_val, backup_val in comparison["path_differences"]:
+                row = ctk.CTkFrame(scroll)
+                row.pack(fill="x", pady=2)
+                
+                # Key-Labels mit deutschen Namen
+                key_names = {
+                    "root_dir": "Basis-Verzeichnis",
+                    "input_dir": "Eingangsordner",
+                    "unclear_dir": "Unklar-Ordner",
+                    "duplicates_dir": "Duplikate-Ordner",
+                    "customers_file": "Kundendatei",
+                    "tesseract_path": "Tesseract-Pfad"
+                }
+                key_display = key_names.get(key, key)
+                
+                ctk.CTkLabel(row, text=key_display, width=180, anchor="w").pack(side="left", padx=5)
+                
+                current_str = str(current_val) if current_val else "(nicht gesetzt)"
+                backup_str = str(backup_val) if backup_val else "(nicht gesetzt)"
+                
+                ctk.CTkLabel(row, text=current_str, width=280, 
+                           anchor="w", text_color="orange").pack(side="left", padx=5)
+                ctk.CTkLabel(row, text=backup_str, width=280,
+                           anchor="w", text_color="lightblue").pack(side="left", padx=5)
+        
+        # Ordnerstruktur-Unterschiede
+        if comparison["structure_differences"]:
+            structure_title = ctk.CTkLabel(
+                scroll,
+                text="📂 Ordnerstruktur-Einstellungen:",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            structure_title.pack(pady=(15, 5), anchor="w")
+            
+            # Header
+            header_row = ctk.CTkFrame(scroll)
+            header_row.pack(fill="x", pady=5)
+            
+            ctk.CTkLabel(header_row, text="Einstellung", width=180,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            ctk.CTkLabel(header_row, text="Neue Einstellung", width=280,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            ctk.CTkLabel(header_row, text="Backup-Einstellung", width=280,
+                        font=ctk.CTkFont(weight="bold")).pack(side="left", padx=5)
+            
+            # Unterschiede
+            for key, current_val, backup_val in comparison["structure_differences"]:
+                row = ctk.CTkFrame(scroll)
+                row.pack(fill="x", pady=2)
+                
+                # Key-Labels mit deutschen Namen
+                key_names = {
+                    "folder_template": "Ordner-Vorlage",
+                    "filename_template": "Dateinamen-Vorlage",
+                    "replace_spaces": "Leerzeichen ersetzen",
+                    "remove_invalid_chars": "Ungültige Zeichen entfernen",
+                    "use_month_names": "Monatsnamen verwenden"
+                }
+                key_display = key_names.get(key, key)
+                
+                ctk.CTkLabel(row, text=key_display, width=180, anchor="w").pack(side="left", padx=5)
+                
+                current_str = str(current_val) if current_val is not None else "(nicht gesetzt)"
+                backup_str = str(backup_val) if backup_val is not None else "(nicht gesetzt)"
+                
+                ctk.CTkLabel(row, text=current_str, width=280, 
+                           anchor="w", text_color="orange").pack(side="left", padx=5)
+                ctk.CTkLabel(row, text=backup_str, width=280,
+                           anchor="w", text_color="lightblue").pack(side="left", padx=5)
+        
+        # Button-Frame
+        button_frame = ctk.CTkFrame(dialog)
+        button_frame.pack(fill="x", padx=20, pady=20)
+        
+        def on_continue():
+            result["choice"] = "CONTINUE"
+            dialog.destroy()
+        
+        def on_use_backup():
+            result["choice"] = "USE_BACKUP"
+            dialog.destroy()
+        
+        def on_cancel():
+            result["choice"] = "CANCEL"
+            dialog.destroy()
+        
+        # Button-Grid mit 3 Spalten
+        button_grid = ctk.CTkFrame(button_frame)
+        button_grid.pack(expand=True)
+        
+        # Neue Config speichern
+        continue_btn = ctk.CTkButton(
+            button_grid,
+            text="✅ Neue Einstellungen speichern\n(Empfohlen)",
+            command=on_continue,
+            width=280,
+            height=60,
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        continue_btn.grid(row=0, column=0, padx=10, pady=10)
+        
+        # Backup wiederherstellen
+        backup_btn = ctk.CTkButton(
+            button_grid,
+            text="🔄 Backup wiederherstellen\n(Änderungen verwerfen)",
+            command=on_use_backup,
+            width=280,
+            height=60,
+            fg_color="orange",
+            hover_color="darkorange"
+        )
+        backup_btn.grid(row=0, column=1, padx=10, pady=10)
+        
+        # Abbrechen
+        cancel_btn = ctk.CTkButton(
+            button_grid,
+            text="❌ Abbrechen\n(Nicht speichern)",
+            command=on_cancel,
+            width=280,
+            height=60,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        cancel_btn.grid(row=0, column=2, padx=10, pady=10)
+        
+        # Info-Text unter Buttons
+        info_bottom = ctk.CTkLabel(
+            button_frame,
+            text="💡 Tipp: Wenn du dir nicht sicher bist, wähle 'Neue Einstellungen speichern'",
             font=ctk.CTkFont(size=10, slant="italic"),
             text_color="gray"
         )

@@ -317,27 +317,43 @@ python main.py
 - 🛡️ **Konfigurations-Backup-System**: Automatische Sicherung aller wichtigen Einstellungen
 - 💾 **Zentrales Backup**: Alle Einstellungen werden in `data/config_backup.json` gespeichert
 - 🔄 **Automatisches Restore**: Bei Neuinstallation oder fehlendem config.json wird Backup automatisch wiederhergestellt
-- � **Automatisches Config-Sync**: Beim Wechseln des Archiv-Ordners wird automatisch die dortige Config geladen
-- �📊 **Backup-Info im Einstellungen-Tab**: Zeigt Zeitpunkt, Version und Größe des letzten Backups
+- 🔍 **Intelligenter Vergleich**: Beim Speichern werden Änderungen mit Backup verglichen
+- 💬 **Benutzerfreundliche Dialoge**: Zeigt Unterschiede und fragt welche Config verwendet werden soll
+- 📊 **Backup-Info im Einstellungen-Tab**: Zeigt Zeitpunkt, Version und Größe des letzten Backups
 - 🔧 **Manuelles Restore**: Button zum Wiederherstellen des Backups mit Sicherheitsabfrage
 - 📄 **Gesicherte Dateien**: config.json, patterns.json, vehicles.csv und alle Ordnerstruktur-Einstellungen
+- 🔀 **Automatisches Config-Sync**: Beim Wechseln des Archiv-Ordners wird automatisch die dortige Config geladen
 
 **Backup-Verhalten:**
 - ✅ **Automatisch beim Speichern**: Jede Einstellungsänderung wird gesichert
+- ✅ **Intelligenter Vergleich**: Änderungen werden erkannt und angezeigt (mit Unterschieden-Dialog)
+- ✅ **Wahlmöglichkeit**: Neue Einstellungen speichern / Backup wiederherstellen / Abbrechen
 - ✅ **Automatisch beim Start**: Fehlendes config.json wird aus Backup wiederhergestellt
 - ✅ **Dreifach-Sicherung**: Programm-Config + Archiv-Config + Backup im data/-Ordner
 - ✅ **Versionsinfo**: Backup enthält Zeitstempel und Programmversion
+
+**Vergleichs-System:**
+- 🔍 **Pfad-Vergleich**: Basis-Verzeichnis, Eingangsordner, Unklar-Ordner, Duplikate, Kundendatei, Tesseract
+- 🔍 **Struktur-Vergleich**: Ordner-Template, Dateinamen-Template, Leerzeichen-Ersetzung, etc.
+- 💬 **Übersichtlicher Dialog**: Zeigt alle Unterschiede in zwei Spalten (Neu vs. Backup)
+- 🎯 **Deutsche Labels**: "Basis-Verzeichnis" statt "root_dir" für bessere Verständlichkeit
 
 **Archiv-spezifisches Verhalten:**
 - 🔄 **Auto-Load**: Beim Ändern des root_dir wird `.werkstattarchiv_structure.json` automatisch geladen
 - 💾 **Auto-Sync**: Programm-Einstellungen werden ins Archiv kopiert, wenn keine Config vorhanden
 - 🔀 **Bidirektional**: Änderungen werden IMMER in beide Richtungen synchronisiert
 - 📂 **Archiv-Priorität**: Existierende Archiv-Config hat Vorrang vor Programm-Einstellungen
+- 💬 **Vergleichs-Dialog**: Bei Unterschieden erscheint Dialog mit Wahlmöglichkeiten
 
 **Sicherheitsfeatures:**
 - 🔒 **Schutz vor Datenverlust**: Nach Neuinstallation alte Struktur wiederhergestellt
+- 🔒 **Schutz vor versehentlichen Änderungen**: Dialog warnt vor wichtigen Änderungen
 - 🔒 **Update-sicher**: Alte Einstellungen bleiben bei Updates erhalten
 - 🔒 **Plattformunabhängig**: Funktioniert auf Windows, macOS und Linux
+
+**Dokumentation:**
+- 📚 **Backup-System Guide**: Vollständige Anleitung in `docs/BACKUP_SYSTEM_GUIDE.md`
+- 📚 **Config-Sync Guide**: Anleitung zum Archiv-Sync in `docs/CONFIG_SYNC_GUIDE.md`
 - 🔒 **Archiv-Unabhängigkeit**: Jedes Archiv kann eigene Ordnerstruktur haben
 
 **Windows-Verbesserungen:**

@@ -24,6 +24,25 @@ class ConfigBackupManager:
         "data/vehicles.csv"                         # Fahrzeugdaten
     ]
     
+    # Wichtige Config-Keys die verglichen werden sollen
+    IMPORTANT_CONFIG_KEYS = [
+        "root_dir",
+        "input_dir",
+        "unclear_dir",
+        "duplicates_dir",
+        "customers_file",
+        "tesseract_path"
+    ]
+    
+    # Wichtige Ordnerstruktur-Keys die verglichen werden sollen
+    IMPORTANT_STRUCTURE_KEYS = [
+        "folder_template",
+        "filename_template",
+        "replace_spaces",
+        "remove_invalid_chars",
+        "use_month_names"
+    ]
+    
     def __init__(self):
         """Initialisiert den Backup-Manager."""
         self.backup_dir = os.path.dirname(self.BACKUP_FILE)
@@ -158,6 +177,76 @@ class ConfigBackupManager:
     def backup_exists(self) -> bool:
         """Prüft ob ein Backup vorhanden ist."""
         return os.path.exists(self.BACKUP_FILE)
+    
+    def compare_with_current(self, current_config: Dict[str, Any]) -> Dict[str, Any]:
+        """:
+        Vergleicht aktuelles Backup mit der übergebenen Config.
+        
+        Args:
+            current_config: Aktuelle Konfiguration zum Vergleich
+            
+        Returns:
+            Dictionary mit Vergleichsergebnissen:
+            {
+                "has_differences": bool,
+                "backup_exists": bool,
+                "path_differences": [(key, current, backup), ...],
+                "structure_differences": [(key, current, backup), ...],
+                "backup_timestamp": str,
+                "backup_version": str
+            }
+        """
+        result = {
+            "has_differences": False,
+            "backup_exists": False,
+            "path_differences": [],
+            "structure_differences": [],
+            "backup_timestamp": None,
+            "backup_version": None
+        }
+        
+        # Prüfe ob Backup existiert
+        if not self.backup_exists():
+            return result
+        
+        result["backup_exists"] = True
+        
+        try:
+            # Lade Backup
+            with open(self.BACKUP_FILE, 'r', encoding='utf-8') as f:
+                backup_data = json.load(f)
+            
+            result["backup_timestamp"] = backup_data.get("timestamp", "unbekannt")
+            result["backup_version"] = backup_data.get("version", "unbekannt")
+            
+            backup_config = backup_data.get("config", {})
+            
+            # Vergleiche Pfad-Einstellungen
+            for key in self.IMPORTANT_CONFIG_KEYS:
+                current_val = current_config.get(key)
+                backup_val = backup_config.get(key)
+                
+                if current_val != backup_val:
+                    result["path_differences"].append((key, current_val, backup_val))
+                    result["has_differences"] = True
+            
+            # Vergleiche Ordnerstruktur-Einstellungen
+            current_structure = current_config.get("folder_structure", {})
+            backup_structure = backup_config.get("folder_structure", {})
+            
+            for key in self.IMPORTANT_STRUCTURE_KEYS:
+                current_val = current_structure.get(key)
+                backup_val = backup_structure.get(key)
+                
+                if current_val != backup_val:
+                    result["structure_differences"].append((key, current_val, backup_val))
+                    result["has_differences"] = True
+            
+            return result
+        
+        except Exception as e:
+            print(f"⚠️  Fehler beim Vergleichen mit Backup: {e}")
+            return result
     
     def _get_version(self) -> str:
         """Holt die aktuelle Programmversion."""
