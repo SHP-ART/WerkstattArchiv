@@ -17,26 +17,45 @@ CONFIG_FILE = "config.json"
 
 def load_config() -> Dict[str, Any]:
     """
-    Lädt die Konfiguration aus config.json.
-    Falls nicht vorhanden: Versucht Restore aus Backup.
-    Erstellt Standardkonfiguration als letzte Option.
+    Lädt die Konfiguration.
+    Priorität: 
+    1. config.json im Basis-Verzeichnis (VORRANG!)
+    2. config.json im Programmverzeichnis
+    3. Restore aus Backup
+    4. Standardkonfiguration
     
     Returns:
         Konfigurationsdictionary
     """
     backup_manager = ConfigBackupManager()
     
-    # FALL 1: config.json existiert → Lade normal
+    # Schritt 1: Lade lokale config.json um root_dir zu kennen
+    local_config = None
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            print("✓ Konfiguration aus config.json geladen")
-            return config
-        
+                local_config = json.load(f)
         except Exception as e:
-            print(f"⚠️  Fehler beim Laden von config.json: {e}")
-            # Fallthrough zu FALL 2
+            print(f"⚠️  Fehler beim Laden von {CONFIG_FILE}: {e}")
+    
+    # Schritt 2: PRIORITÄT! Wenn root_dir existiert, lade config.json von dort
+    if local_config and local_config.get("root_dir"):
+        root_dir = local_config["root_dir"]
+        config_in_root = os.path.join(root_dir, "config.json")
+        
+        if os.path.exists(config_in_root):
+            try:
+                with open(config_in_root, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                print(f"✓ Konfiguration aus Basis-Verzeichnis geladen (VORRANG): {config_in_root}")
+                return config
+            except Exception as e:
+                print(f"⚠️  Fehler beim Laden von {config_in_root}: {e}")
+    
+    # FALL 1: Lokale config.json existiert → Lade sie als Fallback
+    if local_config:
+        print("✓ Konfiguration aus Programmverzeichnis geladen")
+        return local_config
     
     # FALL 2: config.json fehlt → Versuche Backup-Restore
     print(f"⚠️  {CONFIG_FILE} nicht gefunden.")

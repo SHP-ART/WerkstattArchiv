@@ -80,8 +80,11 @@ class FolderStructureManager:
         """
         Initialisiert den FolderStructureManager.
         
+        WICHTIG: Die Archiv-Config (.werkstattarchiv_structure.json im Daten-Ordner) 
+        hat IMMER Vorrang über die Programm-Config!
+        
         Args:
-            config: Konfiguration mit Struktur-Einstellungen
+            config: Konfiguration mit Struktur-Einstellungen (aus config.json)
             archive_root_dir: Root-Verzeichnis des Archivs (für archiv-spezifische Config)
         """
         self.config = config or {}
@@ -91,10 +94,17 @@ class FolderStructureManager:
         # Archiv-spezifische Konfigurationsdatei
         if archive_root_dir:
             self.archive_config_file = os.path.join(archive_root_dir, ".werkstattarchiv_structure.json")
+            
             # Lade Archiv-Konfiguration falls vorhanden
             archive_config = self.load_archive_config()
             if archive_config:
+                # WICHTIG: Archiv-Config hat Vorrang! Überschreibe Programm-Config
                 self.config.update(archive_config)
+                print(f"✅ Archiv-Config geladen: {self.archive_config_file}")
+            else:
+                # Keine Archiv-Config vorhanden → Erstelle sie mit aktuellen Einstellungen
+                print(f"ℹ️  Keine Archiv-Config gefunden, erstelle neue: {self.archive_config_file}")
+                # Wird beim ersten save_archive_config() erstellt
         
         self.folder_template = self.config.get("folder_template", "{kunde}/{jahr}/{typ}")
         self.filename_template = self.config.get("filename_template", "{datum}_{typ}_{auftrag}.pdf")

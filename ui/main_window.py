@@ -24,6 +24,11 @@ from services.virtual_customer_manager import VirtualCustomerManager
 from core.folder_structure_manager import FolderStructureManager
 from core.config_backup import ConfigBackupManager
 from services.keyword_detector import KeywordDetector
+from ui.config_dialogs import (
+    show_root_config_comparison_dialog,
+    show_root_config_same_dialog,
+    show_root_config_not_found_dialog
+)
 
 class ProgressDialog(ctk.CTkToplevel):
     """Dialog mit Progress-Bar für längere Operationen (Batch-Processing, Scans, etc)."""
@@ -153,10 +158,17 @@ class MainWindow(ctk.CTk):
             config.get("root_dir", ""),
             customer_manager
         )
+        
+        # FolderStructureManager initialisieren
+        # Zuerst mit Programm-Einstellungen erstellen
         self.folder_structure_manager = FolderStructureManager(
             config.get("folder_structure", {}),
             archive_root_dir=config.get("root_dir", "")
         )
+        
+        # Beim Start: Prüfe ob Archiv-Config von Programm-Config abweicht
+        self._check_archive_config_on_startup()
+        
         self.config_backup_manager = ConfigBackupManager()
         self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
@@ -729,7 +741,7 @@ class MainWindow(ctk.CTk):
             label = ctk.CTkLabel(row_frame, text=label_text, width=200, anchor="w")
             label.pack(side="left", padx=5)
             
-            entry = ctk.CTkEntry(row_frame, width=600)
+            entry = ctk.CTkEntry(row_frame, width=500)
             entry.pack(side="left", padx=5, fill="x", expand=True)
             entry.insert(0, str(self.config.get(key, "")))
             self.entries[key] = entry
@@ -738,6 +750,13 @@ class MainWindow(ctk.CTk):
             browse_btn = ctk.CTkButton(row_frame, text="...", width=50,
                                        command=lambda k=key: self.browse_path(k))
             browse_btn.pack(side="left", padx=5)
+            
+            # Speichern-Button für einzelnen Pfad
+            save_single_btn = ctk.CTkButton(row_frame, text="💾", width=50,
+                                           command=lambda k=key: self.save_single_path(k),
+                                           fg_color="green",
+                                           hover_color="darkgreen")
+            save_single_btn.pack(side="left", padx=5)
 
         # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
         self.create_folder_structure_settings(scroll_frame)
@@ -2120,20 +2139,143 @@ class MainWindow(ctk.CTk):
             # Cursor zurücksetzen
             self.configure(cursor="")
     
-    def _load_archive_config_if_exists(self, archive_root: str):
+    def save_single_path(self, key: str):
         """
-        Lädt Archiv-spezifische Konfiguration falls vorhanden.
-        Wird automatisch aufgerufen wenn root_dir geändert wird.
+        Speichert einen einzelnen Pfad-Wert.
+        Bei root_dir wird auch die Archiv-Config geprüft und im Basis-Verzeichnis gespeichert.
         
         Args:
-            archive_root: Neuer Archiv-Root-Pfad
+            key: Der Schlüssel des zu speichernden Pfads (z.B. "root_dir", "input_dir")
         """
+        # Hole neuen Wert
+        new_value = self.entries[key].get().strip()
+        if new_value == "" or new_value.lower() == "none":
+            new_value = None
+        
+        # Speichere alten Wert für Vergleich
+        old_value = self.config.get(key)
+        
+        # Aktualisiere Config
+        self.config[key] = new_value
+        
+        # Bei root_dir: Prüfe Archiv-Config und speichere dort
+        if key == "root_dir" and new_value and os.path.exists(new_value):
+            # Prüfe auf Archiv-Config und zeige ggf. Dialog
+            self._load_archive_config_if_exists(new_value)
+        
+        try:
+            # 1. Speichere IMMER im Programmverzeichnis (für den Start)
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            
+            # 2. Speichere zusätzlich im Basis-Verzeichnis (wenn vorhanden)
+            root_dir = self.config.get("root_dir", "")
+            if root_dir and os.path.exists(root_dir):
+                config_in_root = os.path.join(root_dir, "config.json")
+                with open(config_in_root, "w", encoding="utf-8") as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
+                config_location = "Programm + Basis-Verzeichnis"
+            else:
+                config_location = "Programmverzeichnis"
+            
+            # 3. Speichere auch Archiv-Config für Ordnerstruktur (wenn root_dir)
+            if key == "root_dir" and new_value:
+                self.folder_structure_manager.save_archive_config()
+            
+            # 4. Erstelle Backup in data/
+            self.config_backup_manager.create_backup(self.config)
+            
+            # Erfolgs-Meldung
+            label_mapping = {
+                "root_dir": "Basis-Verzeichnis",
+                "input_dir": "Eingangsordner",
+                "unclear_dir": "Unklar-Ordner",
+                "customers_file": "Kundendatei",
+                "tesseract_path": "Tesseract-Pfad"
+            }
+            label = label_mapping.get(key, key)
+            
+            self.settings_status.configure(
+                text=f"✅ {label} gespeichert → {config_location}",
+                text_color="green"
+            )
+            self.add_log("SUCCESS", f"{label} gespeichert", 
+                        f"{key}: {new_value}\nConfig in: {config_location}")
+            
+        except Exception as e:
+            self.settings_status.configure(
+                text=f"❌ Fehler beim Speichern: {e}",
+                text_color="red"
+            )
+            self.add_log("ERROR", "Fehler beim Speichern", str(e))
+    
+    def _load_archive_config_if_exists(self, archive_root: str):
+        """
+        Prüft ob im Archiv eine config.json existiert.
+        Falls ja: Lade sie und zeige Dialog bei Unterschieden zur aktuellen Config.
+        Falls nein: Zeige Info-Dialog.
+        
+        Prüft außerdem .werkstattarchiv_structure.json für Ordnerstruktur.
+        
+        Args:
+            archive_root: Pfad zum Archiv-Wurzelverzeichnis
+        """
+        if not archive_root or not os.path.exists(archive_root):
+            return
+        
+        # ========== TEIL 1: Prüfe config.json im Basis-Verzeichnis ==========
+        config_in_root = os.path.join(archive_root, "config.json")
+        
+        if os.path.exists(config_in_root):
+            try:
+                with open(config_in_root, "r", encoding="utf-8") as f:
+                    root_config = json.load(f)
+                
+                # Vergleiche mit aktueller Programm-Config
+                differences = []
+                keys_to_check = ["root_dir", "input_dir", "unclear_dir", "customers_file", "tesseract_path"]
+                
+                for key in keys_to_check:
+                    current_val = self.config.get(key, "")
+                    root_val = root_config.get(key, "")
+                    if current_val != root_val:
+                        differences.append(f"{key}: '{current_val}' → '{root_val}'")
+                
+                if differences:
+                    # UNTERSCHIEDE GEFUNDEN → Zeige Dialog
+                    show_root_config_comparison_dialog(
+                        self,
+                        differences=differences,
+                        config_path=config_in_root
+                    )
+                    self.add_log("INFO", "Config im Basis-Verzeichnis gefunden",
+                                f"Unterschiede zur Programm-Config erkannt.\n"
+                                f"Basis-Config hat VORRANG!\n"
+                                f"Quelle: {config_in_root}")
+                else:
+                    # IDENTISCH → Zeige Info-Dialog
+                    show_root_config_same_dialog(self, config_path=config_in_root)
+                    self.add_log("INFO", "Config im Basis-Verzeichnis identisch",
+                                f"Die Basis-Config stimmt mit den Programm-Einstellungen überein.\n"
+                                f"Quelle: {config_in_root}")
+                    
+            except Exception as e:
+                self.add_log("ERROR", "Fehler beim Laden der Basis-Config",
+                            f"Datei: {config_in_root}\nFehler: {str(e)}")
+        else:
+            # Config.json existiert NICHT → Zeige Info-Dialog
+            show_root_config_not_found_dialog(self, archive_root)
+            self.add_log("INFO", "Keine config.json im Basis-Verzeichnis",
+                        f"Pfad: {config_in_root}\n"
+                        f"Verwende Programm-Config. Beim Speichern wird sie erstellt.")
+        
+        # ========== TEIL 2: Prüfe .werkstattarchiv_structure.json ==========
         archive_config_file = os.path.join(archive_root, ".werkstattarchiv_structure.json")
         
         if not os.path.exists(archive_config_file):
-            # Keine Archiv-Config → Nutze Programm-Einstellungen
-            self.add_log("INFO", "Archiv-Ordner gewechselt", 
-                        f"Keine .werkstattarchiv_structure.json gefunden → Programm-Einstellungen aktiv")
+            # Keine Archiv-Config → Erstelle sie mit aktuellen Programm-Einstellungen
+            self.add_log("INFO", "Archiv-Ordner gewählt", 
+                        f"Keine .werkstattarchiv_structure.json gefunden")
             
             # Erstelle neuen FolderStructureManager mit aktuellen Einstellungen
             self.folder_structure_manager = FolderStructureManager(
@@ -2144,44 +2286,177 @@ class MainWindow(ctk.CTk):
             # Speichere Programm-Einstellungen ins Archiv
             if self.folder_structure_manager.save_archive_config():
                 self.add_log("SUCCESS", "Archiv-Config erstellt", 
-                           f"Programm-Einstellungen nach {archive_config_file} kopiert")
+                           f"✅ Programm-Einstellungen als Archiv-Config gespeichert: {archive_config_file}")
             
             return
         
-        # Archiv-Config existiert → Lade sie
+        # Archiv-Config existiert → Prüfe auf Unterschiede!
         try:
             with open(archive_config_file, 'r', encoding='utf-8') as f:
                 archive_config = json.load(f)
             
-            # Erstelle neuen FolderStructureManager mit Archiv-Config
-            self.folder_structure_manager = FolderStructureManager(
+            # Vergleiche mit aktuellen Programm-Einstellungen
+            current_structure = self.config.get("folder_structure", {})
+            differences = self._compare_configs(current_structure, archive_config)
+            
+            if not differences:
+                # Identisch → Einfach laden ohne Dialog
+                self.folder_structure_manager = FolderStructureManager(
+                    archive_config,
+                    archive_root_dir=archive_root
+                )
+                self.config["folder_structure"] = archive_config
+                
+                self.add_log("INFO", "Archiv-Config geladen", 
+                           "📁 Archiv-Config ist identisch mit Programm-Einstellungen")
+                
+                if hasattr(self, 'settings_status'):
+                    self.settings_status.configure(
+                        text="✅ Archiv-Config geladen (identisch)",
+                        text_color="green"
+                    )
+                return
+            
+            # Unterschiede gefunden → Zeige Dialog
+            result = self._show_config_comparison_dialog(
+                archive_root,
+                current_structure,
                 archive_config,
-                archive_root_dir=archive_root
+                differences
             )
             
-            # Aktualisiere auch die Programm-Config (Sync)
-            self.config["folder_structure"] = archive_config
-            
-            # Erfolgs-Meldung
-            folder_template = archive_config.get("folder_template", "unbekannt")
-            filename_template = archive_config.get("filename_template", "unbekannt")
-            
-            self.add_log("SUCCESS", "Archiv-Config geladen", 
-                        f"Ordnerstruktur aus Archiv übernommen:\n  Ordner: {folder_template}\n  Datei: {filename_template}")
-            
-            # GUI-Status aktualisieren (falls Einstellungs-Tab offen)
-            if hasattr(self, 'settings_status'):
-                self.settings_status.configure(
-                    text="✓ Archiv-Ordner gewechselt (Config geladen)",
-                    text_color="green"
+            if result == "USE_ARCHIVE":
+                # Archiv-Config übernehmen
+                self.folder_structure_manager = FolderStructureManager(
+                    archive_config,
+                    archive_root_dir=archive_root
                 )
+                self.config["folder_structure"] = archive_config
+                
+                # Erfolgs-Meldung
+                folder_template = archive_config.get("folder_template", "unbekannt")
+                filename_template = archive_config.get("filename_template", "unbekannt")
+                
+                self.add_log("SUCCESS", "Archiv-Config übernommen", 
+                            f"✅ Ordnerstruktur aus Archiv übernommen:\n  Ordner: {folder_template}\n  Datei: {filename_template}")
+                
+                # GUI aktualisieren
+                self._reload_settings_in_gui()
+                
+                if hasattr(self, 'settings_status'):
+                    self.settings_status.configure(
+                        text="✅ Archiv-Config übernommen",
+                        text_color="green"
+                    )
+            
+            elif result == "KEEP_CURRENT":
+                # Aktuelle Programm-Einstellungen behalten und ins Archiv schreiben
+                self.folder_structure_manager = FolderStructureManager(
+                    current_structure,
+                    archive_root_dir=archive_root
+                )
+                
+                # Überschreibe Archiv-Config mit aktuellen Einstellungen
+                if self.folder_structure_manager.save_archive_config():
+                    self.add_log("SUCCESS", "Programm-Config ins Archiv geschrieben", 
+                               f"✅ Archiv-Config wurde mit Programm-Einstellungen überschrieben")
+                
+                if hasattr(self, 'settings_status'):
+                    self.settings_status.configure(
+                        text="✅ Programm-Einstellungen beibehalten",
+                        text_color="green"
+                    )
+            
+            else:  # "CANCEL"
+                # Abbruch → Feld zurücksetzen auf alten Wert
+                self.add_log("WARNING", "Ordnerwechsel abgebrochen", 
+                           "Benutzer hat den Dialog abgebrochen")
+                
+                # Setze root_dir Feld zurück
+                old_root = self.config.get("root_dir", "")
+                if "root_dir" in self.entries:
+                    self.entries["root_dir"].delete(0, "end")
+                    self.entries["root_dir"].insert(0, old_root)
+                
+                if hasattr(self, 'settings_status'):
+                    self.settings_status.configure(
+                        text="⚠️ Ordnerwechsel abgebrochen",
+                        text_color="orange"
+                    )
         
         except Exception as e:
             self.add_log("ERROR", "Fehler beim Laden der Archiv-Config", 
                         f"{archive_config_file}: {e}")
     
+    def _check_archive_config_on_startup(self):
+        """
+        Prüft beim Programmstart ob Archiv-Config existiert und von Programm-Config abweicht.
+        Wird nur aufgerufen wenn skip_gui_init=False (normale GUI-Nutzung).
+        """
+        root_dir = self.config.get("root_dir", "")
+        if not root_dir or not os.path.exists(root_dir):
+            # Kein gültiger Archiv-Ordner konfiguriert
+            return
+        
+        archive_config_file = os.path.join(root_dir, ".werkstattarchiv_structure.json")
+        
+        if not os.path.exists(archive_config_file):
+            # Keine Archiv-Config → Erstelle sie mit Programm-Einstellungen
+            if self.folder_structure_manager.save_archive_config():
+                print(f"✅ Archiv-Config beim Start erstellt: {archive_config_file}")
+            return
+        
+        # Archiv-Config existiert → Prüfe auf Unterschiede
+        try:
+            with open(archive_config_file, 'r', encoding='utf-8') as f:
+                archive_config = json.load(f)
+            
+            current_structure = self.config.get("folder_structure", {})
+            differences = self._compare_configs(current_structure, archive_config)
+            
+            if not differences:
+                # Identisch → Alles gut
+                print(f"✅ Archiv-Config ist identisch mit Programm-Einstellungen")
+                return
+            
+            # Unterschiede gefunden → Nach GUI-Start Dialog anzeigen
+            # (Verzögert damit GUI fertig initialisiert ist)
+            def show_dialog_after_startup():
+                result = self._show_config_comparison_dialog(
+                    root_dir,
+                    current_structure,
+                    archive_config,
+                    differences
+                )
+                
+                if result == "USE_ARCHIVE":
+                    # Archiv-Config übernehmen
+                    self.config["folder_structure"] = archive_config
+                    self.folder_structure_manager = FolderStructureManager(
+                        archive_config,
+                        archive_root_dir=root_dir
+                    )
+                    self._reload_settings_in_gui()
+                    print("✅ Archiv-Config beim Start übernommen")
+                    
+                elif result == "KEEP_CURRENT":
+                    # Programm-Einstellungen ins Archiv schreiben
+                    self.folder_structure_manager.save_archive_config()
+                    print("✅ Programm-Einstellungen ins Archiv geschrieben")
+                
+                # Bei CANCEL: Nichts tun, Benutzer kann später manuell entscheiden
+            
+            # Zeige Dialog nach 1000ms (GUI ist dann bereit)
+            self.after(1000, show_dialog_after_startup)
+            
+        except Exception as e:
+            print(f"⚠️ Fehler beim Prüfen der Archiv-Config beim Start: {e}")
+    
     def save_settings(self):
-        """Speichert die Einstellungen mit intelligentem Archiv-Config-Abgleich."""
+        """
+        Speichert die Einstellungen.
+        WICHTIG: Schreibt IMMER die Archiv-Config im Daten-Ordner mit aktuellen Einstellungen.
+        """
         # Sammle neue Einstellungen
         new_config = {}
         for key, entry in self.entries.items():
@@ -2194,7 +2469,7 @@ class MainWindow(ctk.CTk):
         # Speichere Ordnerstruktur-Einstellungen
         new_config["folder_structure"] = self.folder_structure_manager.get_config()
         
-        # SCHRITT 1: Prüfe Unterschiede zum letzten Backup
+        # SCHRITT 1: Prüfe Unterschiede zum letzten Backup (Optional: Nur Warnung)
         backup_comparison = self.config_backup_manager.compare_with_current(new_config)
         
         if backup_comparison["backup_exists"] and backup_comparison["has_differences"]:
@@ -2217,59 +2492,46 @@ class MainWindow(ctk.CTk):
                     # Aktualisiere GUI
                     self._reload_settings_in_gui()
         
-        # SCHRITT 2: Prüfe ob root_dir geändert wurde (Archiv-Config-Check)
-        old_root_dir = self.config.get("root_dir", "")
-        new_root_dir = new_config.get("root_dir", "")
-        
-        if old_root_dir != new_root_dir and new_root_dir:
-            # Root-Dir wurde geändert → Prüfe auf Archiv-Config
-            result = self._check_and_compare_archive_config(new_root_dir, new_config)
-            
-            if result == "CANCEL":
-                # Abbruch - Benutzer soll neuen Ordner wählen
-                self.settings_status.configure(
-                    text="⚠️ Speichern abgebrochen - Bitte anderen Ordner wählen",
-                    text_color="orange"
-                )
-                return
-            elif result == "USE_ARCHIVE":
-                # Archiv-Config wurde übernommen
-                # new_config wurde in _check_and_compare_archive_config() aktualisiert
-                self.add_log("INFO", "Archiv-Config übernommen", f"Einstellungen aus {new_root_dir} geladen")
-        
         # Aktualisiere lokale Config
         self.config = new_config
         
         try:
-            # 1. Speichere Programm-Konfiguration
+            # 1. Speichere IMMER im Programmverzeichnis (für den Start)
             with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
             
-            # 2. Speichere Archiv-spezifische Konfiguration
+            # 2. Speichere zusätzlich im Basis-Verzeichnis (wenn vorhanden)
+            root_dir = self.config.get("root_dir", "")
+            if root_dir and os.path.exists(root_dir):
+                config_in_root = os.path.join(root_dir, "config.json")
+                with open(config_in_root, "w", encoding="utf-8") as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
+                config_location = f"Programm + Basis-Verzeichnis"
+            else:
+                config_location = "Programmverzeichnis"
+            
+            # 3. Speichere Archiv-spezifische Konfiguration (IMMER!)
             archive_saved = self.folder_structure_manager.save_archive_config()
             
-            # 3. Erstelle Backup im data/-Ordner (SICHERHEIT)
+            # 4. Erstelle Backup im data/-Ordner (SICHERHEIT)
             backup_created = self.config_backup_manager.create_backup(self.config)
             
             # Status-Meldung je nach Erfolg
             if archive_saved and backup_created:
-                status_msg = "✓ Einstellungen gespeichert (Programm + Archiv + Backup)"
-                log_msg = f"Programm-Config + Archiv-Config + Backup ({self.config_backup_manager.BACKUP_FILE})"
+                status_msg = f"✅ Einstellungen gespeichert ({config_location} + Archiv + Backup)"
+                log_msg = f"Config → {config_location}\nArchiv-Config + Backup ({self.config_backup_manager.BACKUP_FILE})"
             elif archive_saved:
-                status_msg = "✓ Einstellungen gespeichert (Programm + Archiv)"
-                log_msg = "Programm-Config + Archiv-Config gespeichert"
+                status_msg = f"✅ Einstellungen gespeichert ({config_location} + Archiv)"
+                log_msg = f"Config → {config_location}\nArchiv-Config gespeichert"
             elif backup_created:
-                status_msg = "✓ Einstellungen gespeichert (Programm + Backup)"
-                log_msg = f"Programm-Config + Backup ({self.config_backup_manager.BACKUP_FILE})"
+                status_msg = f"✅ Einstellungen gespeichert ({config_location} + Backup)"
+                log_msg = f"Config → {config_location}\nBackup ({self.config_backup_manager.BACKUP_FILE})"
             else:
-                status_msg = "✓ Programm-Einstellungen gespeichert"
-                log_msg = "Nur Programm-Config gespeichert (Archiv/Backup nicht verfügbar)"
+                status_msg = f"✅ Programm-Einstellungen gespeichert ({config_location})"
+                log_msg = f"Config → {config_location} (Archiv/Backup nicht verfügbar)"
             
             self.settings_status.configure(text=status_msg, text_color="green")
             self.add_log("SUCCESS", "Einstellungen gespeichert", log_msg)
-            
-            # Aktualisiere GUI falls Archiv-Config geladen wurde
-            self._reload_settings_in_gui()
             
         except Exception as e:
             self.settings_status.configure(text=f"✗ Fehler: {e}", 
@@ -3571,7 +3833,8 @@ class MainWindow(ctk.CTk):
             target_path, is_clear, reason = process_document(
                 doc["target_path"], analysis,
                 self.config["root_dir"], self.config["unclear_dir"],
-                self.customer_manager
+                self.customer_manager,
+                self.folder_structure_manager
             )
             
             if is_clear:
@@ -4110,7 +4373,7 @@ class MainWindow(ctk.CTk):
             
             # Dokument verarbeiten
             target_path, is_clear, reason = process_document(
-                file_path, analysis, root_dir, unclear_dir, self.customer_manager
+                file_path, analysis, root_dir, unclear_dir, self.customer_manager, self.folder_structure_manager
             )
             
             # Logging
