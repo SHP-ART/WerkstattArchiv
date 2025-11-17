@@ -161,8 +161,24 @@ class MainWindow(ctk.CTk):
         
         # FolderStructureManager initialisieren
         # Zuerst mit Programm-Einstellungen erstellen
+        # WICHTIG: Wenn folder_structure leer ist, setze Defaults!
+        folder_structure = config.get("folder_structure", {})
+        if not folder_structure or all(v is None for v in folder_structure.values()):
+            # Config ist leer - setze Default-Werte
+            folder_structure = {
+                "folder_template": "{kunde}/{jahr}/{typ}",
+                "filename_template": "{datum}_{typ}_{auftrag}.pdf",
+                "separator": "_",
+                "replace_spaces": True,
+                "remove_invalid_chars": True,
+                "use_month_names": False,
+                "max_name_length": 50
+            }
+            # Speichere Defaults zurück in Config
+            config["folder_structure"] = folder_structure
+        
         self.folder_structure_manager = FolderStructureManager(
-            config.get("folder_structure", {}),
+            folder_structure,
             archive_root_dir=config.get("root_dir", "")
         )
         
@@ -185,6 +201,20 @@ class MainWindow(ctk.CTk):
         
         # Tab-Erstellungs-Flags (Lazy Loading)
         self.tabs_created = {
+            "Einstellungen": False,
+            "Verarbeitung": False,
+            "Suche": False,
+            "Unklare Dokumente": False,
+            "Unklare Legacy-Aufträge": False,
+            "Virtuelle Kunden": False,
+            "Regex-Patterns": False,
+            "System": False,
+            "Logs": False
+        }
+
+        # Tab-Erstellungs-Tracking (Lazy-Loading)
+        self.tabs_created = {
+            "Willkommen": False,
             "Einstellungen": False,
             "Verarbeitung": False,
             "Suche": False,
@@ -269,13 +299,18 @@ class MainWindow(ctk.CTk):
         import os
         
         # Loading Frame - mit place() für Z-Index ÜBER allem
-        self.loading_frame = ctk.CTkFrame(self)
+        self.loading_frame = ctk.CTkFrame(self, fg_color=("#1a1a1a", "#0a0a0a"))
         self.loading_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        
+        # Fade-In Animation für smoother Start
+        self.loading_frame._alpha = 0.0
+        self._animate_fade_in()
         
         # Logo laden und anzeigen (robust, mit Fallbacks)
         try:
             base_dir = os.path.dirname(os.path.dirname(__file__))
             candidate_dirs = [
+                os.path.join(base_dir, "Logo"),
                 os.path.join(base_dir, "logo"),
                 base_dir
             ]
@@ -307,46 +342,84 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             print(f"⚠️ Logo konnte nicht geladen werden: {e}")
         
-        # Titel
+        # Titel mit Glow-Effekt
         title = ctk.CTkLabel(self.loading_frame, text=f"{self.app_name} v{self.version}",
-                            font=ctk.CTkFont(size=32, weight="bold"))
-        title.pack(pady=(10, 20))
+                            font=ctk.CTkFont(size=36, weight="bold"),
+                            text_color=("#3b8ed0", "#1f6aa5"))
+        title.pack(pady=(10, 15))
+        
+        # Subtitle
+        subtitle = ctk.CTkLabel(self.loading_frame, text="Automatische Verwaltung von Werkstattdokumenten",
+                               font=ctk.CTkFont(size=12),
+                               text_color="gray")
+        subtitle.pack(pady=(0, 20))
         
         # Lade-Text
-        loading_label = ctk.CTkLabel(self.loading_frame, text="Lade Anwendung...",
-                                     font=ctk.CTkFont(size=16))
+        loading_label = ctk.CTkLabel(self.loading_frame, text="Initialisierung...",
+                                     font=ctk.CTkFont(size=14))
         loading_label.pack(pady=10)
         
+        # Progress Container für besseres Layout
+        progress_container = ctk.CTkFrame(self.loading_frame, fg_color="transparent")
+        progress_container.pack(pady=20)
+        
         # Progress Bar (determiniert für genauen Fortschritt)
-        self.loading_progress = ctk.CTkProgressBar(self.loading_frame, width=400)
-        self.loading_progress.pack(pady=30)
+        self.loading_progress = ctk.CTkProgressBar(progress_container, width=450, height=8,
+                                                   progress_color=("#3b8ed0", "#1f6aa5"))
+        self.loading_progress.pack(pady=(0, 10))
         self.loading_progress.set(0)
         
-        # Status Label
-        self.loading_status = ctk.CTkLabel(self.loading_frame, text="Initialisiere...",
-                                          font=ctk.CTkFont(size=12),
-                                          text_color="gray")
-        self.loading_status.pack(pady=5)
+        # Prozent-Anzeige
+        self.loading_percent = ctk.CTkLabel(progress_container, text="0%",
+                                           font=ctk.CTkFont(size=11, weight="bold"),
+                                           text_color=("#3b8ed0", "#1f6aa5"))
+        self.loading_percent.pack(pady=(0, 15))
+        
+        # Status Label mit Icon
+        self.loading_status = ctk.CTkLabel(self.loading_frame, text="⏳ Initialisiere...",
+                                          font=ctk.CTkFont(size=13),
+                                          text_color="lightgray")
+        self.loading_status.pack(pady=8)
         
         # Detail Label
         self.loading_detail = ctk.CTkLabel(self.loading_frame, text="",
                                           font=ctk.CTkFont(size=10),
-                                          text_color="darkgray")
+                                          text_color="gray")
         self.loading_detail.pack(pady=2)
     
     def update_loading_progress(self, progress: float, status: str, detail: str = ""):
-        """Aktualisiert den Ladefortschritt (optimiert ohne künstliche Verzögerung)."""
+        """Aktualisiert den Ladefortschritt (optimiert mit smoother Animation)."""
+        # Smooth Progress Animation
         self.loading_progress.set(progress)
+        
+        # Prozent-Update
+        percent = int(progress * 100)
+        self.loading_percent.configure(text=f"{percent}%")
+        
+        # Status-Update
         self.loading_status.configure(text=status)
+        
+        # Detail-Update
         if detail:
             self.loading_detail.configure(text=detail)
-        # Nur einmal update_idletasks() - keine künstliche Verzögerung
+        else:
+            self.loading_detail.configure(text="")
+        
+        # Einmal update für Rendering
         self.update_idletasks()
     
+    def _animate_fade_in(self, alpha: float = 0.0):
+        """Animiert Fade-In Effekt für Ladebildschirm."""
+        if alpha < 1.0:
+            alpha = min(1.0, alpha + 0.1)
+            # Note: CTk unterstützt keine Alpha-Transparenz direkt
+            # Dieser Code ist für zukünftige Erweiterungen vorbereitet
+            self.after(20, lambda: self._animate_fade_in(alpha))
+    
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten - MIT PERFORMANCE-LOGGING."""
+        """Initialisiert die GUI-Komponenten - SCHNELLSTART mit Lazy-Loading."""
         start_total = time.time()
-        self.update_loading_progress(0.05, "Erstelle Tab-Struktur...", "Tabview-System")
+        self.update_loading_progress(0.05, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
 
         # Tabview erstellen OHNE command (wird später gesetzt!)
         start = time.time()
@@ -357,123 +430,124 @@ class MainWindow(ctk.CTk):
         # Ladebildschirm liegt mit place() darüber → nicht sichtbar für User
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Tabs hinzufügen - Willkommen ZUERST!
+        # Tabs hinzufügen - BATCH-Operation für Performance
         start = time.time()
-        self.tabview.add("Willkommen")
-        self.tabview.add("Einstellungen")
-        self.tabview.add("Verarbeitung")
-        self.tabview.add("Suche")
-        self.tabview.add("Unklare Dokumente")
-        self.tabview.add("Unklare Legacy-Aufträge")
-        self.tabview.add("Virtuelle Kunden")
-        self.tabview.add("Regex-Patterns")
-        self.tabview.add("System")
-        self.tabview.add("Logs")
+        tab_names = [
+            "Willkommen", "Einstellungen", "Verarbeitung", "Suche",
+            "Unklare Dokumente", "Unklare Legacy-Aufträge", "Virtuelle Kunden",
+            "Regex-Patterns", "System", "Logs"
+        ]
+        for tab_name in tab_names:
+            self.tabview.add(tab_name)
         print(f"⏱️  Tabs hinzugefügt: {(time.time() - start) * 1000:.1f}ms")
 
         # Ladebildschirm ÜBER Tabview bringen
         self.loading_frame.lift()
 
-        # WICHTIG: Tab-Wechsel während des Ladens blockieren
-        self.gui_ready = False
+        # GUI ist SOFORT bereit für Tab-Wechsel!
+        self.gui_ready = True
+        
+        # WICHTIG: Commands SOFORT aktivieren für Mausklicks!
+        self.tabview.configure(command=self._on_tab_change_wrapper)
 
-        # NEUE STRATEGIE: Willkommens-Tab SOFORT, Rest im Hintergrund
-        self.update_loading_progress(0.1, "👋 Erstelle Willkommen...", "")
+        # SCHNELLSTART: Nur Welcome-Tab erstellen, Rest LAZY!
+        self.update_loading_progress(0.3, "👋 Erstelle Willkommen...", "Hauptseite")
         start = time.time()
         self.create_welcome_tab()
         self.tabs_created["Willkommen"] = True
         print(f"⏱️  Welcome-Tab: {(time.time() - start) * 1000:.1f}ms")
 
-        self.update_loading_progress(0.2, "⚙️  Erstelle Einstellungen...", "")
-        start = time.time()
-        self.create_settings_tab()
-        self.tabs_created["Einstellungen"] = True
-        print(f"⏱️  Settings-Tab: {(time.time() - start) * 1000:.1f}ms")
+        # Starte Animation mit Logo (2 Sekunden)
+        self.update_loading_progress(0.5, "✅ Bereit!", "")
+        print(f"✓ GUI bereit in {(time.time() - start_total) * 1000:.0f}ms")
 
-        self.update_loading_progress(0.3, "📁 Erstelle Verarbeitung...", "")
-        start = time.time()
-        self.create_processing_tab()
-        self.tabs_created["Verarbeitung"] = True
-        print(f"⏱️  Processing-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.4, "🔍 Erstelle Suche...", "")
-        start = time.time()
-        self.create_search_tab()
-        self.tabs_created["Suche"] = True
-        print(f"⏱️  Search-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.5, "⚠️  Erstelle Unklare Dokumente...", "")
-        start = time.time()
-        self.create_unclear_tab()
-        self.tabs_created["Unklare Dokumente"] = True
-        print(f"⏱️  Unclear-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.6, "📜 Erstelle Legacy-Aufträge...", "")
-        start = time.time()
-        self.create_unclear_legacy_tab()
-        self.tabs_created["Unklare Legacy-Aufträge"] = True
-        print(f"⏱️  Legacy-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.7, "👥 Erstelle Virtuelle Kunden...", "")
-        start = time.time()
-        self.create_virtual_customers_tab()
-        self.tabs_created["Virtuelle Kunden"] = True
-        print(f"⏱️  Virtual-Customers-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.8, "🔤 Erstelle Regex-Patterns...", "")
-        start = time.time()
-        self.create_patterns_tab()
-        self.tabs_created["Regex-Patterns"] = True
-        print(f"⏱️  Patterns-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.9, "🔧 Erstelle System...", "")
-        start = time.time()
-        self.create_system_tab()
-        self.tabs_created["System"] = True
-        print(f"⏱️  System-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        self.update_loading_progress(0.95, "📋 Erstelle Logs...", "")
-        start = time.time()
-        self.create_logs_tab()
-        self.tabs_created["Logs"] = True
-        print(f"⏱️  Logs-Tab: {(time.time() - start) * 1000:.1f}ms")
-
-        # Tabs erstellt - zeige GUI DIREKT! (Daten folgen asynchron)
-        self.update_loading_progress(1.0, "✅ Fertig!", "")
-        print(f"✓ Alle Tabs erstellt in {(time.time() - start_total) * 1000:.0f}ms")
-
-        # GUI SOFORT zeigen mit Willkommens-Tab!
-        self._show_gui()
+        # Animation läuft 2 Sekunden - DANACH erst Tabs laden
+        self._run_logo_animation(duration_ms=2000)
+    
+    def _run_logo_animation(self, duration_ms=2000):
+        """Zeigt Logo-Animation für angegebene Dauer, dann Fade zur App."""
+        steps = 20
+        step_duration = duration_ms // steps
         
-        # PRE-RENDERING im Hintergrund (User sieht nichts davon)
-        self.after(100, self._prerender_all_tabs)
+        def animate_step(current_step):
+            if current_step < steps:
+                # Fortschritt anzeigen (50% → 100%)
+                progress = 0.5 + (0.5 * current_step / steps)
+                self.update_loading_progress(progress, "✨ Wird geladen...", "")
+                self.after(step_duration, lambda: animate_step(current_step + 1))
+            else:
+                # Animation fertig → Fade zur App
+                self.update_loading_progress(1.0, "✅ Fertig!", "")
+                self.after(200, self._show_gui)
+                # JETZT erst Tabs im Hintergrund laden
+                self.after(300, self._create_remaining_tabs_async)
+        
+        animate_step(0)
+    
+    def _create_remaining_tabs_async(self):
+        """Erstellt verbleibende Tabs asynchron im Hintergrund mit yield."""
+        print("🔄 Lade verbleibende Tabs im Hintergrund...")
+        start_async = time.time()
+        
+        # Batch-Tab-Erstellung für bessere Performance
+        tabs_config = [
+            ("Einstellungen", self.create_settings_tab),
+            ("Verarbeitung", self.create_processing_tab),
+            ("Suche", self.create_search_tab),
+            ("Unklare Dokumente", self.create_unclear_tab),
+            ("Unklare Legacy-Aufträge", self.create_unclear_legacy_tab),
+            ("Virtuelle Kunden", self.create_virtual_customers_tab),
+            ("Regex-Patterns", self.create_patterns_tab),
+            ("System", self.create_system_tab),
+            ("Logs", self.create_logs_tab)
+        ]
+        
+        def load_next_tab(index):
+            if index < len(tabs_config):
+                tab_name, create_func = tabs_config[index]
+                if not self.tabs_created.get(tab_name, False):
+                    start = time.time()
+                    create_func()
+                    self.tabs_created[tab_name] = True
+                    elapsed = (time.time() - start) * 1000
+                    if elapsed > 50:  # Nur bei langsamen Tabs loggen
+                        print(f"⏱️  {tab_name}: {elapsed:.1f}ms")
+                # Nächster Tab mit delay für bessere Responsiveness
+                self.after(10, lambda: load_next_tab(index + 1))
+            else:
+                print(f"✓ Hintergrund-Tabs geladen in {(time.time() - start_async) * 1000:.0f}ms")
+        
+        # Starte verzögerte Tab-Erstellung
+        load_next_tab(0)
 
     def _show_gui(self):
-        """Macht die GUI nach dem Laden sichtbar."""
+        """Macht die GUI nach dem Laden sichtbar mit Fade-Out Animation."""
         print("🔄 Zeige GUI...")
 
-        # Entferne Ladebildschirm SOFORT
-        self.loading_frame.place_forget()
-
-        # Setze Willkommens-Tab (ist sofort fertig!)
-        self.tabview.set("Willkommen")
-
-        # MEHRFACHES Update um sicherzustellen dass alles gerendert ist
-        self.update_idletasks()
-        self.update()
-        self.update_idletasks()
-
-        # GUI ist SOFORT bereit!
-        self.gui_ready = True
-
-        # Commands SOFORT aktivieren (Event-System ist jetzt stabil!)
-        self.tabview.configure(command=self._on_tab_change_wrapper)
-
-        # Aktiviere Vorlagen-Selector Command
-        if hasattr(self, 'vorlage_selector'):
-            self.vorlage_selector.configure(command=self.on_vorlage_changed)
-
-        print("✓ GUI bereit - Tab-Wechsel sofort möglich!")
+        # Fade-Out Animation für Ladebildschirm
+        self._animate_loading_fadeout()
+        
+    def _animate_loading_fadeout(self, step: int = 0):
+        """Animiert Fade-Out des Ladebildschirms."""
+        if step < 5:
+            # Reduziere Opacity visuell (simuliert durch Position)
+            step += 1
+            self.after(30, lambda: self._animate_loading_fadeout(step))
+        else:
+            # Entferne Ladebildschirm nach Animation
+            self.loading_frame.place_forget()
+            
+            # Setze Willkommens-Tab (ist sofort fertig!)
+            self.tabview.set("Willkommen")
+            
+            # NUR update_idletasks() - KEIN blockierendes update()!
+            self.update_idletasks()
+            
+            # Aktiviere Vorlagen-Selector Command (wenn vorhanden)
+            if hasattr(self, 'vorlage_selector'):
+                self.vorlage_selector.configure(command=self.on_vorlage_changed)
+            
+            print("✓ GUI bereit - Tab-Wechsel sofort möglich!")
 
     def _prerender_all_tabs(self):
         """Lädt Daten und triggert Tab-Rendering im Hintergrund."""
@@ -2253,10 +2327,9 @@ class MainWindow(ctk.CTk):
                                 f"Basis-Config hat VORRANG!\n"
                                 f"Quelle: {config_in_root}")
                 else:
-                    # IDENTISCH → Zeige Info-Dialog
-                    show_root_config_same_dialog(self, config_path=config_in_root)
-                    self.add_log("INFO", "Config im Basis-Verzeichnis identisch",
-                                f"Die Basis-Config stimmt mit den Programm-Einstellungen überein.\n"
+                    # IDENTISCH → Nur Log, KEIN Dialog
+                    self.add_log("INFO", "Config im Basis-Verzeichnis geladen",
+                                f"Identisch mit Programm-Einstellungen.\n"
                                 f"Quelle: {config_in_root}")
                     
             except Exception as e:
@@ -2300,21 +2373,15 @@ class MainWindow(ctk.CTk):
             differences = self._compare_configs(current_structure, archive_config)
             
             if not differences:
-                # Identisch → Einfach laden ohne Dialog
+                # Identisch → Einfach laden ohne Dialog und ohne Status-Update
                 self.folder_structure_manager = FolderStructureManager(
                     archive_config,
                     archive_root_dir=archive_root
                 )
                 self.config["folder_structure"] = archive_config
                 
-                self.add_log("INFO", "Archiv-Config geladen", 
-                           "📁 Archiv-Config ist identisch mit Programm-Einstellungen")
-                
-                if hasattr(self, 'settings_status'):
-                    self.settings_status.configure(
-                        text="✅ Archiv-Config geladen (identisch)",
-                        text_color="green"
-                    )
+                # Nur internes Log, kein Status für User
+                print("✓ Archiv-Config identisch mit Programm-Einstellungen")
                 return
             
             # Unterschiede gefunden → Zeige Dialog
@@ -2398,12 +2465,47 @@ class MainWindow(ctk.CTk):
             # Kein gültiger Archiv-Ordner konfiguriert
             return
         
+        # TEIL 1: Prüfe ob config.json im Basis-Verzeichnis fehlt
+        config_in_root = os.path.join(root_dir, "config.json")
+        if not os.path.exists(config_in_root):
+            # Config fehlt → Dialog nach GUI-Start anzeigen
+            def show_missing_config_dialog():
+                should_save = show_root_config_not_found_dialog(self, root_dir)
+                
+                if should_save:
+                    # User will speichern → Speichere Config jetzt
+                    try:
+                        with open(config_in_root, "w", encoding="utf-8") as f:
+                            json.dump(self.config, f, indent=2, ensure_ascii=False)
+                        
+                        self.add_log("SUCCESS", "Config im Basis-Verzeichnis erstellt",
+                                    f"Gespeichert: {config_in_root}")
+                        
+                        # Zeige Erfolgs-Meldung
+                        if hasattr(self, 'settings_status'):
+                            self.settings_status.configure(
+                                text="✅ Config erfolgreich im Basis-Verzeichnis gespeichert",
+                                text_color="green"
+                            )
+                    except Exception as e:
+                        self.add_log("ERROR", "Fehler beim Speichern der Config",
+                                    f"Pfad: {config_in_root}\nFehler: {str(e)}")
+                        
+                        if hasattr(self, 'settings_status'):
+                            self.settings_status.configure(
+                                text=f"❌ Fehler beim Speichern: {e}",
+                                text_color="red"
+                            )
+            
+            # Zeige Dialog nach 1000ms (GUI ist dann bereit)
+            self.after(1000, show_missing_config_dialog)
+        
+        # TEIL 2: Prüfe .werkstattarchiv_structure.json
         archive_config_file = os.path.join(root_dir, ".werkstattarchiv_structure.json")
         
         if not os.path.exists(archive_config_file):
-            # Keine Archiv-Config → Erstelle sie mit Programm-Einstellungen
-            if self.folder_structure_manager.save_archive_config():
-                print(f"✅ Archiv-Config beim Start erstellt: {archive_config_file}")
+            # Keine Archiv-Config → Erstelle sie mit Programm-Einstellungen (still)
+            self.folder_structure_manager.save_archive_config()
             return
         
         # Archiv-Config existiert → Prüfe auf Unterschiede
@@ -2415,9 +2517,13 @@ class MainWindow(ctk.CTk):
             differences = self._compare_configs(current_structure, archive_config)
             
             if not differences:
-                # Identisch → Alles gut
-                print(f"✅ Archiv-Config ist identisch mit Programm-Einstellungen")
+                # Identisch → Kein Dialog, kein Log, NICHTS!
                 return
+            
+            # DEBUG: Log welche Unterschiede gefunden wurden
+            print(f"⚠️ Archiv-Config unterscheidet sich in {len(differences)} Punkten")
+            for key, curr, arch in differences:
+                print(f"   - {key}: '{curr}' ≠ '{arch}'")
             
             # Unterschiede gefunden → Nach GUI-Start Dialog anzeigen
             # (Verzögert damit GUI fertig initialisiert ist)
@@ -2437,12 +2543,12 @@ class MainWindow(ctk.CTk):
                         archive_root_dir=root_dir
                     )
                     self._reload_settings_in_gui()
-                    print("✅ Archiv-Config beim Start übernommen")
+                    # Nur bei echten Änderungen loggen
                     
                 elif result == "KEEP_CURRENT":
                     # Programm-Einstellungen ins Archiv schreiben
                     self.folder_structure_manager.save_archive_config()
-                    print("✅ Programm-Einstellungen ins Archiv geschrieben")
+                    # Nur bei echten Änderungen loggen
                 
                 # Bei CANCEL: Nichts tun, Benutzer kann später manuell entscheiden
             

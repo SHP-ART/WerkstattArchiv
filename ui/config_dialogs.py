@@ -105,16 +105,22 @@ def show_root_config_same_dialog(parent, config_path: str):
 def show_root_config_not_found_dialog(parent, archive_root: str):
     """
     Zeigt Info-Dialog wenn keine config.json im Basis-Verzeichnis existiert.
+    Bietet an, die Config sofort zu speichern.
     
     Args:
         parent: Parent-Window
         archive_root: Pfad zum Basis-Verzeichnis
+    
+    Returns:
+        True wenn Config gespeichert werden soll, False sonst
     """
     dialog = ctk.CTkToplevel(parent)
     dialog.title("ℹ️ Keine Config im Basis-Verzeichnis")
-    dialog.geometry("600x250")
+    dialog.geometry("650x300")
     dialog.transient(parent)
     dialog.grab_set()
+    
+    result = {"save": False}
     
     # Header
     header = ctk.CTkLabel(
@@ -128,18 +134,47 @@ def show_root_config_not_found_dialog(parent, archive_root: str):
     info = ctk.CTkLabel(
         dialog,
         text=f"Im Basis-Verzeichnis existiert keine config.json.\n\n"
-             f"Es wird die Programm-Config verwendet.\n"
-             f"Beim Speichern wird eine config.json erstellt in:\n{archive_root}",
-        font=("Arial", 12)
+             f"Pfad: {archive_root}\n\n"
+             f"Möchtest du die aktuelle Programm-Config jetzt speichern?\n"
+             f"(Empfohlen - damit beide Orte synchron sind)",
+        font=("Arial", 12),
+        justify="center"
     )
     info.pack(pady=20)
     
-    # OK-Button
-    btn = ctk.CTkButton(
-        dialog,
-        text="OK",
-        command=dialog.destroy
-    )
-    btn.pack(pady=15)
+    # Button-Frame
+    button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+    button_frame.pack(pady=15)
     
-    dialog.mainloop()
+    def on_save():
+        result["save"] = True
+        dialog.destroy()
+    
+    def on_later():
+        result["save"] = False
+        dialog.destroy()
+    
+    # Ja-Button (empfohlen)
+    save_btn = ctk.CTkButton(
+        button_frame,
+        text="✅ Jetzt speichern (empfohlen)",
+        command=on_save,
+        fg_color="green",
+        hover_color="darkgreen",
+        width=200
+    )
+    save_btn.pack(side="left", padx=10)
+    
+    # Später-Button
+    later_btn = ctk.CTkButton(
+        button_frame,
+        text="⏭️ Später",
+        command=on_later,
+        fg_color="gray",
+        hover_color="darkgray",
+        width=150
+    )
+    later_btn.pack(side="left", padx=10)
+    
+    parent.wait_window(dialog)
+    return result["save"]

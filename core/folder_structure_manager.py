@@ -100,11 +100,10 @@ class FolderStructureManager:
             if archive_config:
                 # WICHTIG: Archiv-Config hat Vorrang! Überschreibe Programm-Config
                 self.config.update(archive_config)
-                print(f"✅ Archiv-Config geladen: {self.archive_config_file}")
+                # Stille Ladung - nur bei Fehler loggen
             else:
-                # Keine Archiv-Config vorhanden → Erstelle sie mit aktuellen Einstellungen
-                print(f"ℹ️  Keine Archiv-Config gefunden, erstelle neue: {self.archive_config_file}")
-                # Wird beim ersten save_archive_config() erstellt
+                # Keine Archiv-Config vorhanden → Wird beim ersten save_archive_config() erstellt
+                pass
         
         self.folder_template = self.config.get("folder_template", "{kunde}/{jahr}/{typ}")
         self.filename_template = self.config.get("filename_template", "{datum}_{typ}_{auftrag}.pdf")
