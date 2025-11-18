@@ -1,19 +1,26 @@
 """
 Logging-Service für WerkstattArchiv.
 Schreibt alle Events persistent in eine lokale Logdatei.
+Unterstützt optionales Remote-Logging via Syslog.
 """
 
 import os
+import logging
+import logging.handlers
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 LOG_FILE = "WerkstattArchiv_log.txt"
 
+# Globaler Remote-Logger (wird bei Bedarf initialisiert)
+_remote_logger: Optional[logging.Logger] = None
+_syslog_enabled = False
+
 
 def log(event_dict: Dict[str, Any]) -> None:
     """
-    Schreibt ein Event in die Logdatei.
+    Schreibt ein Event in die Logdatei und optional an Remote-Server.
     
     Args:
         event_dict: Dictionary mit Event-Informationen
@@ -34,6 +41,27 @@ def log(event_dict: Dict[str, Any]) -> None:
         # Logdatei im Append-Modus öffnen
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_entry)
+        
+        # Optional: Remote-Logging
+        if _syslog_enabled and _remote_logger:
+            try:
+                status = event_dict.get("status", "INFO")
+                # Kompakte Nachricht für Syslog
+                msg_parts = []
+                for key, value in event_dict.items():
+                    if key not in ["timestamp", "status"]:
+                        msg_parts.append(f"{key}={value}")
+                message = " | ".join(msg_parts)
+                
+                if status == "ERROR":
+                    _remote_logger.error(message)
+                elif status == "UNCLEAR":
+                    _remote_logger.warning(message)
+                else:
+                    _remote_logger.info(message)
+            except Exception as e:
+                # Remote-Fehler nicht kritisch - lokales Log bleibt erhalten
+                pass
             
     except Exception as e:
         print(f"Fehler beim Schreiben der Logdatei: {e}")
@@ -106,3 +134,75 @@ def log_error(original_path: str, error_message: str) -> None:
         "error": error_message,
     }
     log(event)
+
+
+def init_remote_logging(
+    enabled: bool = False,
+    server: Optional[str] = None,
+    port: int = 514,
+    protocol: str = "UDP"
+) -> bool:
+    """
+    Initialisiert optionales Remote-Logging via Syslog.
+    
+    Args:
+        enabled: Remote-Logging aktivieren
+        server: IP/Hostname des Syslog-Servers
+        port: Port des Syslog-Servers (Standard: 514)
+        protocol: "UDP" oder "TCP"
+        
+    Returns:
+        True wenn erfolgreich initialisiert, sonst False
+    """
+    global _remote_logger, _syslog_enabled
+    
+    if not enabled or not server:
+        _syslog_enabled = False
+        return False
+    
+    try:
+        # Logger erstellen
+        _remote_logger = logging.getLogger("WerkstattArchiv_Remote")
+        _remote_logger.setLevel(logging.INFO)
+        _remote_logger.handlers.clear()
+        
+        # Socket-Typ bestimmen
+        if protocol.upper() == "TCP":
+            socktype = logging.handlers.socket.SOCK_STREAM
+        else:
+            socktype = logging.handlers.socket.SOCK_DGRAM
+        
+        # Syslog-Handler
+        syslog_handler = logging.handlers.SysLogHandler(
+            address=(server, port),
+            socktype=socktype
+        )
+        
+        # Formatter
+        formatter = logging.Formatter(
+            'WerkstattArchiv: [%(levelname)s] %(message)s'
+        )
+        syslog_handler.setFormatter(formatter)
+        _remote_logger.addHandler(syslog_handler)
+        
+        _syslog_enabled = True
+        _remote_logger.info(f"Remote-Logging aktiviert: {server}:{port} ({protocol})")
+        
+        print(f"✓ Remote-Logging aktiviert: {server}:{port} ({protocol})")
+        return True
+        
+    except Exception as e:
+        _syslog_enabled = False
+        print(f"⚠️ Remote-Logging fehlgeschlagen: {e}")
+        return False
+
+
+def disable_remote_logging():
+    """Deaktiviert Remote-Logging."""
+    global _syslog_enabled, _remote_logger
+    _syslog_enabled = False
+    if _remote_logger:
+        for handler in _remote_logger.handlers:
+            handler.close()
+        _remote_logger.handlers.clear()
+    print("✓ Remote-Logging deaktiviert")

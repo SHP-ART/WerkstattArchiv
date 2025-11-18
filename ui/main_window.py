@@ -16,7 +16,7 @@ import threading
 from services.customers import CustomerManager
 from services.analyzer import analyze_document
 from services.router import process_document
-from services.logger import log_success, log_unclear, log_error
+from services.logger import log_success, log_unclear, log_error, init_remote_logging, disable_remote_logging
 from services.indexer import DocumentIndex
 from services.vorlagen import VorlagenManager
 from services.pattern_manager import PatternManager
@@ -184,6 +184,16 @@ class MainWindow(ctk.CTk):
         
         # Beim Start: Prüfe ob Archiv-Config von Programm-Config abweicht
         self._check_archive_config_on_startup()
+        
+        # Remote-Logging initialisieren (falls aktiviert)
+        remote_log_config = config.get("remote_logging", {})
+        if remote_log_config.get("enabled", False):
+            init_remote_logging(
+                enabled=True,
+                server=remote_log_config.get("server"),
+                port=remote_log_config.get("port", 514),
+                protocol=remote_log_config.get("protocol", "UDP")
+            )
         
         self.config_backup_manager = ConfigBackupManager()
         self.keyword_detector = KeywordDetector()
@@ -906,6 +916,81 @@ class MainWindow(ctk.CTk):
                                    font=ctk.CTkFont(size=10),
                                    text_color="gray")
         restore_info.pack(pady=5)
+        
+        # ========== REMOTE-LOGGING EINSTELLUNGEN ==========
+        remote_log_frame = ctk.CTkFrame(scroll_frame)
+        remote_log_frame.pack(fill="x", padx=10, pady=10)
+        
+        remote_log_title = ctk.CTkLabel(remote_log_frame, text="📡 Remote-Logging (Syslog)", 
+                                        font=ctk.CTkFont(size=16, weight="bold"))
+        remote_log_title.pack(pady=10)
+        
+        # Info-Text
+        remote_info_text = (
+            "Sende Logs an einen zentralen Syslog-Server.\n"
+            "Verhindert Probleme beim Öffnen/Aktualisieren von Log-Dateien.\n"
+            "Logs werden immer auch lokal gespeichert (Fallback)."
+        )
+        remote_info_label = ctk.CTkLabel(remote_log_frame, text=remote_info_text, 
+                                        font=ctk.CTkFont(size=11),
+                                        text_color="gray")
+        remote_info_label.pack(pady=5)
+        
+        # Toggle-Schalter
+        remote_log_config = self.config.get("remote_logging", {})
+        self.remote_logging_var = ctk.BooleanVar(value=remote_log_config.get("enabled", False))
+        
+        toggle_frame = ctk.CTkFrame(remote_log_frame)
+        toggle_frame.pack(fill="x", padx=20, pady=10)
+        
+        toggle_label = ctk.CTkLabel(toggle_frame, text="Remote-Logging:", width=150, anchor="w")
+        toggle_label.pack(side="left", padx=5)
+        
+        toggle_switch = ctk.CTkSwitch(toggle_frame, text="Aktiviert", 
+                                      variable=self.remote_logging_var,
+                                      command=self.toggle_remote_logging)
+        toggle_switch.pack(side="left", padx=5)
+        
+        # Server-Einstellungen
+        server_frame = ctk.CTkFrame(remote_log_frame)
+        server_frame.pack(fill="x", padx=20, pady=5)
+        
+        server_label = ctk.CTkLabel(server_frame, text="Server:", width=150, anchor="w")
+        server_label.pack(side="left", padx=5)
+        
+        self.remote_log_server_entry = ctk.CTkEntry(server_frame, width=300, 
+                                                    placeholder_text="z.B. 192.168.1.100")
+        self.remote_log_server_entry.pack(side="left", padx=5)
+        self.remote_log_server_entry.insert(0, remote_log_config.get("server", ""))
+        
+        # Port
+        port_label = ctk.CTkLabel(server_frame, text="Port:", width=50, anchor="w")
+        port_label.pack(side="left", padx=5)
+        
+        self.remote_log_port_entry = ctk.CTkEntry(server_frame, width=80)
+        self.remote_log_port_entry.pack(side="left", padx=5)
+        self.remote_log_port_entry.insert(0, str(remote_log_config.get("port", 514)))
+        
+        # Protokoll
+        protocol_label = ctk.CTkLabel(server_frame, text="Protokoll:", width=80, anchor="w")
+        protocol_label.pack(side="left", padx=5)
+        
+        self.remote_log_protocol_var = ctk.StringVar(value=remote_log_config.get("protocol", "UDP"))
+        protocol_dropdown = ctk.CTkComboBox(server_frame, 
+                                           variable=self.remote_log_protocol_var,
+                                           values=["UDP", "TCP"],
+                                           width=100)
+        protocol_dropdown.pack(side="left", padx=5)
+        
+        # Status
+        self.remote_log_status = ctk.CTkLabel(remote_log_frame, text="", 
+                                             font=ctk.CTkFont(size=11))
+        self.remote_log_status.pack(pady=5)
+        
+        # Test-Button
+        test_btn = ctk.CTkButton(remote_log_frame, text="🔍 Verbindung testen",
+                                command=self.test_remote_logging)
+        test_btn.pack(pady=5)
         
         self.add_log("SUCCESS", f"Einstellungen-Tab erstellt ({len(self.entries)} Pfad-Felder)")
     
@@ -2575,6 +2660,19 @@ class MainWindow(ctk.CTk):
         # Speichere Ordnerstruktur-Einstellungen
         new_config["folder_structure"] = self.folder_structure_manager.get_config()
         
+        # Speichere Remote-Logging-Einstellungen
+        try:
+            port = int(self.remote_log_port_entry.get())
+        except (ValueError, AttributeError):
+            port = 514
+        
+        new_config["remote_logging"] = {
+            "enabled": self.remote_logging_var.get() if hasattr(self, 'remote_logging_var') else False,
+            "server": self.remote_log_server_entry.get().strip() if hasattr(self, 'remote_log_server_entry') else "",
+            "port": port,
+            "protocol": self.remote_log_protocol_var.get() if hasattr(self, 'remote_log_protocol_var') else "UDP"
+        }
+        
         # SCHRITT 1: Prüfe Unterschiede zum letzten Backup (Optional: Nur Warnung)
         backup_comparison = self.config_backup_manager.compare_with_current(new_config)
         
@@ -3150,6 +3248,106 @@ class MainWindow(ctk.CTk):
             text=f"✓ {len(self.customer_manager.customers)} Kunden geladen",
             text_color="green"
         )
+    
+    def toggle_remote_logging(self):
+        """Schaltet Remote-Logging ein/aus."""
+        enabled = self.remote_logging_var.get()
+        
+        if enabled:
+            server = self.remote_log_server_entry.get().strip()
+            if not server:
+                self.remote_log_status.configure(
+                    text="❌ Bitte Server-Adresse eingeben",
+                    text_color="red"
+                )
+                self.remote_logging_var.set(False)
+                return
+            
+            try:
+                port = int(self.remote_log_port_entry.get())
+            except ValueError:
+                self.remote_log_status.configure(
+                    text="❌ Ungültiger Port",
+                    text_color="red"
+                )
+                self.remote_logging_var.set(False)
+                return
+            
+            protocol = self.remote_log_protocol_var.get()
+            success = init_remote_logging(True, server, port, protocol)
+            
+            if success:
+                self.remote_log_status.configure(
+                    text=f"✓ Remote-Logging aktiviert: {server}:{port} ({protocol})",
+                    text_color="green"
+                )
+                self.add_log("SUCCESS", "Remote-Logging aktiviert", f"{server}:{port}")
+            else:
+                self.remote_log_status.configure(
+                    text="❌ Verbindung fehlgeschlagen (siehe Console)",
+                    text_color="red"
+                )
+                self.remote_logging_var.set(False)
+        else:
+            disable_remote_logging()
+            self.remote_log_status.configure(
+                text="ℹ️ Remote-Logging deaktiviert",
+                text_color="gray"
+            )
+            self.add_log("INFO", "Remote-Logging deaktiviert")
+    
+    def test_remote_logging(self):
+        """Testet die Remote-Logging-Verbindung."""
+        server = self.remote_log_server_entry.get().strip()
+        if not server:
+            self.remote_log_status.configure(
+                text="❌ Bitte Server-Adresse eingeben",
+                text_color="red"
+            )
+            return
+        
+        try:
+            port = int(self.remote_log_port_entry.get())
+        except ValueError:
+            self.remote_log_status.configure(
+                text="❌ Ungültiger Port",
+                text_color="red"
+            )
+            return
+        
+        protocol = self.remote_log_protocol_var.get()
+        
+        # Teste Verbindung
+        success = init_remote_logging(True, server, port, protocol)
+        
+        if success:
+            # Sende Test-Nachricht
+            from services.logger import log
+            log({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "status": "INFO",
+                "message": "Remote-Logging Test erfolgreich"
+            })
+            
+            self.remote_log_status.configure(
+                text=f"✓ Test erfolgreich! Verbindung zu {server}:{port} ({protocol}) OK",
+                text_color="green"
+            )
+            messagebox.showinfo("Test erfolgreich", 
+                              f"Verbindung zum Syslog-Server erfolgreich!\n\n"
+                              f"Server: {server}:{port}\n"
+                              f"Protokoll: {protocol}\n\n"
+                              f"Eine Test-Nachricht wurde gesendet.")
+        else:
+            self.remote_log_status.configure(
+                text="❌ Verbindung fehlgeschlagen",
+                text_color="red"
+            )
+            messagebox.showerror("Test fehlgeschlagen",
+                               f"Konnte keine Verbindung zum Syslog-Server herstellen.\n\n"
+                               f"Server: {server}:{port}\n"
+                               f"Protokoll: {protocol}\n\n"
+                               f"Bitte Server-Adresse und Port prüfen.")
     
     def restore_config_backup(self):
         """Stellt die Konfiguration aus dem Backup wieder her."""

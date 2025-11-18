@@ -13,5 +13,11 @@
     "remove_invalid_chars": true,
     "use_month_names": false,
     "max_name_length": 50
+  },
+  "remote_logging": {
+    "enabled": false,
+    "server": "",
+    "port": 514,
+    "protocol": "UDP"
   }
 }
