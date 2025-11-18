@@ -5,12 +5,19 @@ Baut Zielpfade auf und verschiebt Dateien in die korrekte Struktur.
 
 import os
 import shutil
+import time
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 
 from services.customers import CustomerManager
 from services.filename_generator import generate_filename
 from core.folder_structure_manager import FolderStructureManager
+
+
+# Netzwerkfreundliche Standardwerte
+DEFAULT_COPY_CHUNK_SIZE = 4 * 1024 * 1024  # 4 MB
+MAX_COPY_RETRIES = 3
+RETRY_SLEEP_BASE = 0.75
 
 
 def build_target_path(analysis_result: Dict[str, Any], root_dir: str, 
@@ -162,27 +169,91 @@ def ensure_unique_filename(target_path: str) -> str:
     return ensure_unique_filename(new_path)
 
 
-def move_file(source_path: str, target_path: str) -> None:
+def _same_filesystem(source_path: str, target_path: str) -> bool:
+    """Prüft, ob Quelle und Ziel auf demselben Dateisystem liegen."""
+    try:
+        source_dev = os.stat(source_path).st_dev
+        target_dir = os.path.dirname(target_path) or "."
+        os.makedirs(target_dir, exist_ok=True)
+        target_dev = os.stat(target_dir).st_dev
+        return source_dev == target_dev
+    except OSError:
+        # Auf Netzwerkpfaden kann st_dev fehlen → False erzwingen
+        return False
+
+
+def _copy_file_streaming(source_path: str, temp_target_path: str, chunk_size: int = DEFAULT_COPY_CHUNK_SIZE) -> None:
+    """Kopiert eine Datei blockweise (streaming), ideal für langsame Netzwerkpfade."""
+    with open(source_path, "rb") as src, open(temp_target_path, "wb") as dst:
+        while True:
+            chunk = src.read(chunk_size)
+            if not chunk:
+                break
+            dst.write(chunk)
+        dst.flush()
+        try:
+            os.fsync(dst.fileno())
+        except OSError:
+            # Manche Netzwerk-Filesysteme unterstützen fsync nicht → ignorieren
+            pass
+
+
+def move_file(source_path: str, target_path: str) -> str:
     """
-    Verschiebt eine Datei von source zu target.
-    Erstellt fehlende Verzeichnisse automatisch.
-    
+    Verschiebt eine Datei robust – optimiert für langsame/instabile Netzwerkpfade.
+
     Args:
         source_path: Quellpfad
         target_path: Zielpfad
-        
+
+    Returns:
+        Tatsächlich verwendeter Zielpfad (inkl. Konfliktauflösung)
+
     Raises:
-        Exception bei Fehlern beim Verschieben
+        Exception bei Fehlern nach allen Retry-Versuchen
     """
-    # Zielverzeichnis erstellen falls nicht vorhanden
     target_dir = os.path.dirname(target_path)
     os.makedirs(target_dir, exist_ok=True)
-    
-    # Eindeutigen Dateinamen sicherstellen
-    target_path = ensure_unique_filename(target_path)
-    
-    # Datei verschieben
-    shutil.move(source_path, target_path)
+
+    final_target = ensure_unique_filename(target_path)
+
+    # 1) Schnellpfad: gleicher Datenträger → shutil.move (rename) nutzen
+    if _same_filesystem(source_path, final_target):
+        shutil.move(source_path, final_target)
+        return final_target
+
+    # 2) Netzwerk/anderes Volume → Streaming-Kopie mit Retries
+    last_error: Optional[Exception] = None
+    for attempt in range(1, MAX_COPY_RETRIES + 1):
+        temp_target = f"{final_target}.part"
+        try:
+            _copy_file_streaming(source_path, temp_target)
+
+            # Validierung: Dateigröße vergleichen
+            src_size = os.path.getsize(source_path)
+            dst_size = os.path.getsize(temp_target)
+            if src_size != dst_size:
+                raise IOError(f"Inkomplette Kopie (Quelle {src_size}B ≠ Ziel {dst_size}B)")
+
+            # Atomare Finalisierung
+            os.replace(temp_target, final_target)
+            os.remove(source_path)
+            return final_target
+
+        except Exception as exc:
+            last_error = exc
+            try:
+                if os.path.exists(temp_target):
+                    os.remove(temp_target)
+            except OSError:
+                pass
+
+            # Backoff bei Netzwerkproblemen
+            sleep_time = RETRY_SLEEP_BASE * attempt
+            print(f"⚠️  Kopierfehler (Versuch {attempt}/{MAX_COPY_RETRIES}): {exc} – neuer Versuch in {sleep_time:.1f}s")
+            time.sleep(sleep_time)
+
+    raise Exception(f"Fehler beim Verschieben von {source_path} → {final_target}: {last_error}")
 
 
 def process_document(file_path: str, analysis_result: Dict[str, Any], 
@@ -251,8 +322,8 @@ def process_document(file_path: str, analysis_result: Dict[str, Any],
     
     # Datei verschieben
     try:
-        move_file(file_path, target_path)
+        final_target_path = move_file(file_path, target_path)
     except Exception as e:
         raise Exception(f"Fehler beim Verschieben: {e}")
     
-    return target_path, is_clear, reason
+    return final_target_path, is_clear, reason

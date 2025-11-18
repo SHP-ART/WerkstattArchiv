@@ -3719,6 +3719,9 @@ class MainWindow(ctk.CTk):
             text=f"✓ Fertig: {len(files)} Datei(en) verarbeitet ({summary})",
             text_color="green"
         ))
+
+        # Automatisches Datenbank-Backup im data-Ordner erstellen
+        self._auto_backup_database_to_data()
         
         # Progress-Dialog schließen
         self.after(0, lambda: self._close_progress_dialog())
@@ -3760,6 +3763,47 @@ class MainWindow(ctk.CTk):
                 messagebox.showinfo("Verarbeitung erfolgreich", message)
 
         self.after(100, show_result_message)
+
+    def _auto_backup_database_to_data(self):
+        """Sichert die werkstatt_index.db nach Abschluss der Verarbeitung im data-Ordner."""
+        try:
+            base_dir = os.path.dirname(os.path.dirname(__file__))
+            source_db = os.path.join(base_dir, "werkstatt_index.db")
+            if not os.path.exists(source_db):
+                self.add_log("WARNING", "DB-Backup übersprungen", "werkstatt_index.db nicht gefunden")
+                return
+
+            backup_dir = os.path.join(base_dir, "data", "db_backups")
+            os.makedirs(backup_dir, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(backup_dir, f"werkstatt_index_{timestamp}.db")
+
+            shutil.copy2(source_db, backup_path)
+            self._cleanup_old_db_backups(backup_dir)
+
+            self.add_log("SUCCESS", "Automatisches DB-Backup erstellt", backup_path)
+            self.after(0, lambda: self.process_status.configure(
+                text="✓ Datenbank automatisch gesichert",
+                text_color="green"
+            ))
+
+        except Exception as e:
+            self.add_log("ERROR", "Automatisches DB-Backup fehlgeschlagen", str(e))
+
+    def _cleanup_old_db_backups(self, backup_dir: str, keep_latest: int = 10):
+        """Behält nur die neuesten DB-Backups im data-Ordner."""
+        try:
+            backups = [
+                os.path.join(backup_dir, name)
+                for name in os.listdir(backup_dir)
+                if name.startswith("werkstatt_index_") and name.endswith(".db")
+            ]
+            backups.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            for path in backups[keep_latest:]:
+                os.remove(path)
+        except Exception as e:
+            self.add_log("WARNING", "Aufräumen der DB-Backups fehlgeschlagen", str(e))
     
     def _add_result_row(self, filename: str, analysis: Dict[str, Any], 
                        status: str, color: str):
