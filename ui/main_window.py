@@ -597,22 +597,54 @@ class MainWindow(ctk.CTk):
         try:
             # Zugriff auf die Segmented-Button-Widgets
             segmented_button = self.tabview._segmented_button
-            if segmented_button:
-                # Binde Click-Event auf das Canvas-Widget
-                canvas = segmented_button._canvas
-                if canvas:
-                    canvas.bind("<Button-1>", self._on_tab_click, add="+")
-                    print("✓ Tab-Click-Tracking aktiviert")
-                else:
-                    print("⚠️  Tab Canvas nicht gefunden")
-            else:
+            if not segmented_button:
                 print("⚠️  Segmented Button nicht gefunden")
+                return
+            
+            bound_count = 0
+            
+            # 1. Binde auf Canvas
+            try:
+                if hasattr(segmented_button, '_canvas') and segmented_button._canvas:
+                    segmented_button._canvas.bind("<Button-1>", self._on_tab_click, add="+")
+                    bound_count += 1
+            except:
+                pass
+            
+            # 2. Binde auf Segmented-Button selbst
+            try:
+                segmented_button.bind("<Button-1>", self._on_tab_click, add="+")
+                bound_count += 1
+            except:
+                pass
+            
+            # 3. Binde auf einzelne Buttons
+            try:
+                if hasattr(segmented_button, '_buttons_dict') and segmented_button._buttons_dict:
+                    for button in segmented_button._buttons_dict.values():
+                        if button:
+                            try:
+                                button.bind("<Button-1>", self._on_tab_click, add="+")
+                                bound_count += 1
+                            except:
+                                pass
+            except:
+                pass
+            
+            if bound_count > 0:
+                print(f"✓ Tab-Click-Tracking aktiviert ({bound_count} Widgets gebunden)")
+            else:
+                print("⚠️  Tab-Click-Tracking: Keine Widgets gebunden")
+                
         except Exception as e:
+            import traceback
             print(f"⚠️  Tab-Click-Tracking Fehler: {e}")
+            print(traceback.format_exc())
     
     def _on_tab_click(self, event):
         """Wird beim Mausklick auf einen Tab aufgerufen - startet Zeitmessung."""
         self._last_click_time = time.time()
+        print(f"🖱️  Mausklick auf Tab erfasst!")
     
     def _on_tab_change_wrapper(self):
         """Wrapper für Tab-Wechsel - misst Zeit ab Mausklick!"""
