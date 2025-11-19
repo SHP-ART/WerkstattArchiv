@@ -463,6 +463,12 @@ class MainWindow(ctk.CTk):
         
         # WICHTIG: Commands SOFORT aktivieren für Mausklicks!
         self.tabview.configure(command=self._on_tab_change_wrapper)
+        
+        # Tracking-Variable für Click-Zeitpunkt
+        self._last_click_time = None
+        
+        # Binde Click-Events für alle Tab-Buttons
+        self._bind_tab_click_tracking()
 
         # SCHNELLSTART: Nur Welcome-Tab erstellen, Rest LAZY!
         self.update_loading_progress(0.3, "👋 Erstelle Willkommen...", "Hauptseite")
@@ -586,18 +592,36 @@ class MainWindow(ctk.CTk):
         elapsed = (time.time() - start) * 1000
         print(f"✓ Hintergrund-Daten geladen in {elapsed:.0f}ms")
 
+    def _bind_tab_click_tracking(self):
+        """Bindet Click-Events an alle Tab-Buttons für präzise Zeitmessung."""
+        try:
+            # Zugriff auf die Segmented-Button-Widgets
+            segmented_button = self.tabview._segmented_button
+            if segmented_button:
+                # Binde Click-Event
+                segmented_button.bind("<Button-1>", self._on_tab_click, add="+")
+        except Exception as e:
+            print(f"⚠️  Tab-Click-Tracking konnte nicht gebunden werden: {e}")
+    
+    def _on_tab_click(self, event):
+        """Wird beim Mausklick auf einen Tab aufgerufen - startet Zeitmessung."""
+        self._last_click_time = time.time()
+    
     def _on_tab_change_wrapper(self):
-        """Wrapper für Tab-Wechsel - Non-Blocking!"""
-        start_total = time.time()
-        
+        """Wrapper für Tab-Wechsel - misst Zeit ab Mausklick!"""
         current_tab = self.tabview.get()
         
         # User-Callback ausführen (non-blocking)
         self.on_tab_change()
         
-        # Gesamtzeit messen (nur Callback, KEIN Rendering-Wait!)
-        elapsed_total = (time.time() - start_total) * 1000
-        print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms")
+        # Zeit ab Mausklick berechnen (falls verfügbar)
+        if self._last_click_time:
+            elapsed_total = (time.time() - self._last_click_time) * 1000
+            print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms (ab Mausklick)")
+            self._last_click_time = None  # Reset
+        else:
+            # Fallback wenn kein Click-Event erfasst wurde
+            print(f"⏱️  Tab-Wechsel zu '{current_tab}' (programmgesteuert)")
 
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
