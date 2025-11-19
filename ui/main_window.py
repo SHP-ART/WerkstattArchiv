@@ -729,7 +729,7 @@ class MainWindow(ctk.CTk):
         # Version
         version = ctk.CTkLabel(
             container,
-            text="Version 0.8.7",
+            text=f"Version {self.version}",
             font=ctk.CTkFont(size=18),
             text_color="gray"
         )
