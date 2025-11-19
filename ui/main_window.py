@@ -598,10 +598,17 @@ class MainWindow(ctk.CTk):
             # Zugriff auf die Segmented-Button-Widgets
             segmented_button = self.tabview._segmented_button
             if segmented_button:
-                # Binde Click-Event
-                segmented_button.bind("<Button-1>", self._on_tab_click, add="+")
+                # Binde Click-Event auf das Canvas-Widget
+                canvas = segmented_button._canvas
+                if canvas:
+                    canvas.bind("<Button-1>", self._on_tab_click, add="+")
+                    print("✓ Tab-Click-Tracking aktiviert")
+                else:
+                    print("⚠️  Tab Canvas nicht gefunden")
+            else:
+                print("⚠️  Segmented Button nicht gefunden")
         except Exception as e:
-            print(f"⚠️  Tab-Click-Tracking konnte nicht gebunden werden: {e}")
+            print(f"⚠️  Tab-Click-Tracking Fehler: {e}")
     
     def _on_tab_click(self, event):
         """Wird beim Mausklick auf einen Tab aufgerufen - startet Zeitmessung."""
