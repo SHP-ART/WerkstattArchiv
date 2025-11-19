@@ -7,11 +7,14 @@ REM ============================================================
 setlocal enabledelayedexpansion
 color 0A
 
-REM Erstelle Log-Datei
+REM Erstelle Log-Datei mit Zeitstempel
 set LOGFILE=%CD%\update.log
 echo ============================================================ > "%LOGFILE%"
 echo WerkstattArchiv Update Log >> "%LOGFILE%"
 echo Datum: %date% %time% >> "%LOGFILE%"
+echo Arbeitsverzeichnis: %CD% >> "%LOGFILE%"
+echo Benutzer: %USERNAME% >> "%LOGFILE%"
+echo Computername: %COMPUTERNAME% >> "%LOGFILE%"
 echo ============================================================ >> "%LOGFILE%"
 echo. >> "%LOGFILE%"
 
@@ -21,6 +24,7 @@ echo WerkstattArchiv Update Tool
 echo ============================================================
 echo.
 echo Log wird erstellt: %LOGFILE%
+echo Arbeitsverzeichnis: %CD%
 echo.
 
 REM Setze Fehlerbehandlung
@@ -28,20 +32,26 @@ set ERRORLEVEL=0
 
 REM Prüfe ob Git installiert ist
 echo [CHECK] Pruefe Git-Installation... >> "%LOGFILE%"
-where git >nul 2>nul
-if %ERRORLEVEL% neq 0 (
+where git >> "%LOGFILE%" 2>&1
+set GIT_CHECK=%ERRORLEVEL%
+if %GIT_CHECK% neq 0 (
     color 0C
-    echo FEHLER: Git ist nicht installiert! >> "%LOGFILE%"
+    echo [ERROR] Git nicht gefunden (Exit-Code: %GIT_CHECK%) >> "%LOGFILE%"
+    echo PATH: %PATH% >> "%LOGFILE%"
+    echo. >> "%LOGFILE%"
     echo.
-    echo FEHLER: Git ist nicht installiert!
+    echo FEHLER: Git ist nicht installiert oder nicht im PATH!
     echo.
     echo Bitte installieren Sie Git von: https://git-scm.com/
+    echo Oder fuegen Sie Git zum PATH hinzu.
     echo.
     echo Siehe update.log fuer Details
     pause
     exit /b 1
 )
 echo [OK] Git gefunden >> "%LOGFILE%"
+git --version >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
 
 REM Prüfe ob wir in einem Git-Repository sind
 echo [CHECK] Pruefe Git-Repository... >> "%LOGFILE%"
@@ -105,31 +115,44 @@ echo Backup erstellt in: !BACKUP_DIR!
 echo.
 echo [2/4] Hole aktuelle Aenderungen von GitHub...
 echo [STEP 2/4] Git Fetch... >> "%LOGFILE%"
-git fetch origin main >> "%LOGFILE%" 2>&1
+echo Pruefe Remote: >> "%LOGFILE%"
+git remote -v >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
+echo Pruefe Netzwerk-Verbindung zu GitHub... >> "%LOGFILE%"
+ping github.com -n 2 >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
+echo Starte Git Fetch... >> "%LOGFILE%"
+git fetch origin main --verbose >> "%LOGFILE%" 2>&1
 set FETCH_ERROR=!ERRORLEVEL!
 if !FETCH_ERROR! neq 0 (
     color 0C
-    echo FEHLER: Git fetch fehlgeschlagen (Code: !FETCH_ERROR!) >> "%LOGFILE%"
+    echo [ERROR] Git fetch fehlgeschlagen (Exit-Code: !FETCH_ERROR!) >> "%LOGFILE%"
     echo. >> "%LOGFILE%"
-    echo Git fetch Fehlerausgabe: >> "%LOGFILE%"
-    git fetch origin main >> "%LOGFILE%" 2>&1
+    echo Git Config: >> "%LOGFILE%"
+    git config --list >> "%LOGFILE%" 2>&1
+    echo. >> "%LOGFILE%"
+    echo Git Remote: >> "%LOGFILE%"
+    git remote show origin >> "%LOGFILE%" 2>&1
     echo. >> "%LOGFILE%"
     echo.
-    echo FEHLER: Konnte Aenderungen nicht abrufen! (Code: !FETCH_ERROR!)
+    echo FEHLER: Konnte Aenderungen nicht abrufen! (Exit-Code: !FETCH_ERROR!)
     echo.
     echo Moegliche Ursachen:
-    echo - Netzwerkverbindung unterbrochen
-    echo - GitHub ist nicht erreichbar
-    echo - Git Authentifizierung fehlgeschlagen
+    echo 1. Netzwerkverbindung zu GitHub unterbrochen
+    echo 2. Firewall blockiert Git
+    echo 3. GitHub Repository nicht erreichbar
+    echo 4. Git Authentifizierung fehlgeschlagen
+    echo 5. Remote 'origin' nicht korrekt konfiguriert
     echo.
     echo Das Backup wurde trotzdem erstellt unter:
     echo !BACKUP_DIR!
     echo.
-    echo Siehe update.log fuer Details
+    echo Detaillierte Fehlerinfo in update.log
     pause
     exit /b 1
 )
 echo [OK] Git fetch erfolgreich >> "%LOGFILE%"
+echo. >> "%LOGFILE%"
 
 echo.
 echo [3/4] Pruefe auf lokale Aenderungen...
@@ -158,31 +181,60 @@ if !CHANGED_FILES! gtr 0 (
 echo.
 echo [4/4] Aktualisiere lokalen Code...
 echo [STEP 4/4] Git Pull... >> "%LOGFILE%"
-git pull origin main >> "%LOGFILE%" 2>&1
+echo Aktueller Branch: >> "%LOGFILE%"
+git branch >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
+echo Aktuelle Commits: >> "%LOGFILE%"
+git log --oneline -5 >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
+echo Starte Git Pull... >> "%LOGFILE%"
+git pull origin main --verbose >> "%LOGFILE%" 2>&1
 set PULL_ERROR=!ERRORLEVEL!
 if !PULL_ERROR! neq 0 (
     color 0C
-    echo FEHLER: Git pull fehlgeschlagen (Code: !PULL_ERROR!) >> "%LOGFILE%"
+    echo [ERROR] Git pull fehlgeschlagen (Exit-Code: !PULL_ERROR!) >> "%LOGFILE%"
     echo. >> "%LOGFILE%"
-    echo Git Status: >> "%LOGFILE%"
-    git status >> "%LOGFILE%" 2>&1
+    echo Git Status (detailliert): >> "%LOGFILE%"
+    git status --verbose >> "%LOGFILE%" 2>&1
+    echo. >> "%LOGFILE%"
+    echo Git Diff: >> "%LOGFILE%"
+    git diff >> "%LOGFILE%" 2>&1
+    echo. >> "%LOGFILE%"
+    echo Konflikt-Dateien: >> "%LOGFILE%"
+    git diff --name-only --diff-filter=U >> "%LOGFILE%" 2>&1
     echo. >> "%LOGFILE%"
     echo.
-    echo FEHLER: Update fehlgeschlagen! (Code: !PULL_ERROR!)
+    echo FEHLER: Update fehlgeschlagen! (Exit-Code: !PULL_ERROR!)
     echo.
-    echo Moegliche Loesungen:
-    echo 1. Loesen Sie Git-Konflikte manuell auf
-    echo 2. Starten Sie Git Bash und fuehren Sie 'git status' aus
-    echo 3. Verwenden Sie 'git reset --hard origin/main' zum erzwungenen Update
+    echo Moegliche Ursachen und Loesungen:
     echo.
-    echo Das Backup ist verfügbar unter:
+    echo 1. MERGE-KONFLIKT:
+    echo    - Lokale Aenderungen kollidieren mit Remote-Aenderungen
+    echo    - Loesung: Konflikte in den betroffenen Dateien manuell auflosen
+    echo.
+    echo 2. UNCOMMITTED CHANGES:
+    echo    - Lokale Aenderungen wurden nicht committed
+    echo    - Loesung: Aenderungen stashen mit 'git stash'
+    echo.
+    echo 3. FORCED RESET NOTWENDIG:
+    echo    - Loesung: 'git reset --hard origin/main' (ACHTUNG: Lokale Aenderungen gehen verloren!)
+    echo.
+    echo Das Backup ist verfuegbar unter:
     echo !BACKUP_DIR!
     echo.
-    echo Siehe update.log fuer Details
+    echo Detaillierte Fehlerinfo in update.log
+    echo.
+    echo Zum manuellen Beheben oeffnen Sie Git Bash hier und fuehren Sie aus:
+    echo   git status
+    echo   git diff
     pause
     exit /b 1
 )
 echo [OK] Git pull erfolgreich >> "%LOGFILE%"
+echo. >> "%LOGFILE%"
+echo Neue Commits: >> "%LOGFILE%"
+git log --oneline -5 >> "%LOGFILE%" 2>&1
+echo. >> "%LOGFILE%"
 
 color 0A
 echo. >> "%LOGFILE%"

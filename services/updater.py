@@ -60,11 +60,17 @@ class UpdateManager:
         Returns:
             Tuple (update_available, commit_info, download_url)
         """
+        from services.logger import log_info, log_error
+        
         try:
+            log_info("Update-Check: Prüfe auf neue Commits...")
+            
             # Hole aktuellen lokalen Commit-Hash
             local_commit = self._get_local_commit_hash()
+            log_info(f"Lokaler Commit: {local_commit or 'Unbekannt'}")
             
             # Hole neuesten Remote Commit
+            log_info(f"Rufe Remote-Commits ab: {self.GITHUB_COMMITS_URL}")
             ssl_context = ssl._create_unverified_context()
             request = urllib.request.Request(
                 self.GITHUB_COMMITS_URL,
@@ -72,17 +78,25 @@ class UpdateManager:
             )
             
             with urllib.request.urlopen(request, timeout=10, context=ssl_context) as response:
+                status_code = response.getcode()
+                log_info(f"HTTP Status: {status_code}")
                 data = json.loads(response.read().decode('utf-8'))
             
             remote_commit = data.get('sha', '')[:7]  # Kurze Version
             commit_message = data.get('commit', {}).get('message', '').split('\n')[0]
             commit_date = data.get('commit', {}).get('author', {}).get('date', '')
             
+            log_info(f"Remote Commit: {remote_commit} - {commit_message}")
+            log_info(f"Commit Datum: {commit_date}")
+            
             if not remote_commit:
+                log_error("Kein Remote-Commit gefunden in API-Response")
                 return False, None, None
             
             # Prüfe ob Remote neuer ist
             update_available = (local_commit != remote_commit) if local_commit else True
+            
+            log_info(f"Update verfügbar: {update_available}")
             
             # Info-String erstellen
             commit_info = f"{remote_commit} - {commit_message}"
@@ -92,8 +106,18 @@ class UpdateManager:
             
             return update_available, commit_info, download_url
             
+        except urllib.error.URLError as e:
+            error_msg = f"Netzwerkfehler beim Update-Check: {e.reason if hasattr(e, 'reason') else e}"
+            print(f"❌ {error_msg}")
+            log_error(error_msg)
+            # Fallback zu Release-Check
+            return self._check_releases()
         except Exception as e:
-            print(f"Fehler beim Prüfen auf Updates (Commits): {e}")
+            error_msg = f"Fehler beim Prüfen auf Updates (Commits): {type(e).__name__}: {e}"
+            print(f"❌ {error_msg}")
+            log_error(error_msg)
+            import traceback
+            traceback.print_exc()
             # Fallback zu Release-Check
             return self._check_releases()
     
