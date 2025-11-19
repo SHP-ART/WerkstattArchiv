@@ -1,34 +1,119 @@
 @echo off
 REM ============================================================
-REM WerkstattArchiv Starter (ohne Konsolenfenster)
+REM WerkstattArchiv Starter mit ausführlichem Logging
 REM ============================================================
 
-cd /d %~dp0
+echo.
+echo ============================================================
+echo WerkstattArchiv wird gestartet...
+echo ============================================================
+echo.
 
-REM Pruefe ob venv existiert, sonst nutze System-Python
-if exist venv\Scripts\pythonw.exe (
-    echo Starte mit virtueller Umgebung...
-    start "" venv\Scripts\pythonw.exe main.py
-) else (
-    echo Keine virtuelle Umgebung gefunden, nutze System-Python...
-    where pythonw >nul 2>nul
-    if %ERRORLEVEL% EQU 0 (
-        start "" pythonw.exe main.py
-    ) else (
-        where python >nul 2>nul
-        if %ERRORLEVEL% EQU 0 (
-            echo Hinweis: pythonw nicht gefunden, nutze python (Konsolenfenster bleibt sichtbar)
-            start "" python.exe main.py
-        ) else (
-            echo FEHLER: Python ist nicht installiert oder nicht im PATH!
-            echo Bitte Python 3.11 oder hoeher installieren.
-            echo Download: https://www.python.org/downloads/
-            echo.
-            pause
-            exit /b 1
-        )
-    )
+REM Log-Datei erstellen
+set "LOGFILE=start.log"
+echo [%date% %time%] Start-Versuch >> "%LOGFILE%"
+
+REM Wechsle ins Programmverzeichnis
+cd /d %~dp0
+echo Arbeitsverzeichnis: %CD%
+echo [%date% %time%] Arbeitsverzeichnis: %CD% >> "%LOGFILE%"
+
+REM Prüfe ob main.py existiert
+if not exist "main.py" (
+    echo.
+    echo FEHLER: main.py nicht gefunden!
+    echo Bitte stelle sicher, dass du im WerkstattArchiv-Verzeichnis bist.
+    echo Aktuelles Verzeichnis: %CD%
+    echo.
+    echo [%date% %time%] FEHLER: main.py nicht gefunden in %CD% >> "%LOGFILE%"
+    pause
+    exit /b 1
 )
 
-REM Beende Batch sofort (Konsolenfenster verschwindet)
-exit
+echo [OK] main.py gefunden
+echo [%date% %time%] main.py gefunden >> "%LOGFILE%"
+echo.
+
+REM Prüfe ob venv existiert, sonst nutze System-Python
+if exist "venv\Scripts\python.exe" (
+    echo Nutze virtuelle Umgebung...
+    echo [%date% %time%] Nutze venv: venv\Scripts\python.exe >> "%LOGFILE%"
+    
+    REM Teste Python-Version
+    venv\Scripts\python.exe --version
+    echo.
+    
+    REM Starte mit Python (mit Konsolenfenster für Fehlerausgabe)
+    echo Starte WerkstattArchiv...
+    echo Hinweis: Konsolenfenster bleibt offen fuer Fehlerausgabe
+    echo.
+    venv\Scripts\python.exe main.py
+    
+    REM Prüfe Exit-Code
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo ============================================================
+        echo FEHLER: Programm wurde mit Fehlercode %ERRORLEVEL% beendet!
+        echo ============================================================
+        echo.
+        echo [%date% %time%] FEHLER: Exit-Code %ERRORLEVEL% >> "%LOGFILE%"
+        echo Siehe logs\werkstatt.log fuer Details
+        echo.
+        pause
+        exit /b %ERRORLEVEL%
+    )
+    
+    echo [%date% %time%] Programm erfolgreich beendet >> "%LOGFILE%"
+    
+) else (
+    echo Keine virtuelle Umgebung gefunden, nutze System-Python...
+    echo [%date% %time%] Keine venv gefunden, nutze System-Python >> "%LOGFILE%"
+    
+    REM Prüfe ob Python verfügbar
+    where python >nul 2>nul
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo FEHLER: Python ist nicht installiert oder nicht im PATH!
+        echo.
+        echo Bitte installieren:
+        echo 1. Python 3.11+ von https://www.python.org/downloads/
+        echo 2. Waehrend Installation "Add Python to PATH" ankreuzen!
+        echo.
+        echo Oder erstelle virtuelle Umgebung mit: setup.bat
+        echo.
+        echo [%date% %time%] FEHLER: Python nicht gefunden >> "%LOGFILE%"
+        pause
+        exit /b 1
+    )
+    
+    REM Teste Python-Version
+    python --version
+    echo.
+    
+    echo Starte WerkstattArchiv mit System-Python...
+    echo.
+    python main.py
+    
+    REM Prüfe Exit-Code
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo ============================================================
+        echo FEHLER: Programm wurde mit Fehlercode %ERRORLEVEL% beendet!
+        echo ============================================================
+        echo.
+        echo [%date% %time%] FEHLER: Exit-Code %ERRORLEVEL% >> "%LOGFILE%"
+        echo Siehe logs\werkstatt.log fuer Details
+        echo.
+        pause
+        exit /b %ERRORLEVEL%
+    )
+    
+    echo [%date% %time%] Programm erfolgreich beendet >> "%LOGFILE%"
+)
+
+echo.
+echo ============================================================
+echo WerkstattArchiv wurde beendet
+echo ============================================================
+echo.
+pause
