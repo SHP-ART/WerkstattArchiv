@@ -70,7 +70,7 @@ class ProgressDialog(ctk.CTkToplevel):
 
         # Progress-Text (x/y Items)
         self.progress_text = ctk.CTkLabel(
-            self, text=f"0/{total_items} Items", font=ctk.CTkFont(size=10, color="gray")
+            self, text=f"0/{total_items} Items", font=ctk.CTkFont(size=10), text_color="gray"
         )
         self.progress_text.pack(padx=20, pady=5)
 

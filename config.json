@@ -4,7 +4,7 @@
   "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
   "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
   "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
-  "tesseract_path": null,
+  "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
   "folder_structure": {
     "folder_template": "{kunde}/{jahr}/{typ}",
     "filename_template": "{datum}_{typ}_{auftrag}.pdf",
