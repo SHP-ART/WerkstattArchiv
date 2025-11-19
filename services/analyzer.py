@@ -192,7 +192,12 @@ def extract_text_from_pdf(file_path: str) -> tuple:
 
         return (text, page_count)
     except Exception as e:
-        print(f"Fehler beim PDF-Text-Extrahieren: {e}")
+        from services.logger import log_error
+        error_msg = f"PDF-Text-Extraktion fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        print(f"❌ {error_msg}")
+        log_error(error_msg)
+        import traceback
+        traceback.print_exc()
         return ("", 0)
 
 
@@ -248,7 +253,15 @@ def extract_text_from_image_ocr(file_path: str, tesseract_path: Optional[str] = 
         text = pytesseract.image_to_string(image, lang="deu")  # type: ignore
         return text
     except Exception as e:
-        print(f"Fehler beim OCR: {e}")
+        from services.logger import log_error
+        error_msg = f"Bild-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        print(f"❌ {error_msg}")
+        log_error(error_msg)
+        if tesseract_path:
+            print(f"   Tesseract-Pfad: {tesseract_path}")
+            print(f"   Pfad existiert: {os.path.exists(tesseract_path) if tesseract_path else 'N/A'}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 
@@ -284,7 +297,17 @@ def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = No
 
         return text
     except Exception as e:
-        print(f"Fehler beim PDF-OCR: {e}")
+        from services.logger import log_error
+        error_msg = f"PDF-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        print(f"❌ {error_msg}")
+        log_error(error_msg)
+        if tesseract_path:
+            print(f"   Tesseract-Pfad: {tesseract_path}")
+            print(f"   Pfad existiert: {os.path.exists(tesseract_path) if tesseract_path else 'N/A'}")
+        print(f"   pdf2image verfügbar: {convert_from_path is not None}")
+        print(f"   pytesseract verfügbar: {pytesseract is not None}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 
@@ -539,8 +562,47 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
             "legacy_match_reason": str | None  # NEU: "fin", "name_plus_details", "unclear"
         }
     """
+    from services.logger import log_error, log_info
+    
+    # Validierung
+    if not os.path.exists(file_path):
+        error_msg = f"Datei nicht gefunden: {file_path}"
+        print(f"❌ {error_msg}")
+        log_error(error_msg)
+        return {
+            "kunden_nr": None,
+            "kunden_name": None,
+            "auftrag_nr": None,
+            "dokument_typ": "Unbekannt",
+            "jahr": None,
+            "kennzeichen": None,
+            "fin": None,
+            "confidence": 0.0,
+            "hinweis": error_msg,
+            "vorlage_verwendet": None,
+            "is_legacy": False,
+            "legacy_match_reason": None,
+            "page_count": 0,
+        }
+    
+    print(f"🔍 Analysiere: {os.path.basename(file_path)}")
+    log_info(f"Starte Analyse: {file_path}")
+    
     # Text extrahieren
-    text = extract_text(file_path, tesseract_path)
+    try:
+        text = extract_text(file_path, tesseract_path)
+        if text:
+            print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
+        else:
+            print(f"   ⚠️  Kein Text extrahiert!")
+            log_error(f"Keine Textextraktion möglich für {file_path}")
+    except Exception as e:
+        error_msg = f"Textextraktion fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        print(f"❌ {error_msg}")
+        log_error(error_msg)
+        import traceback
+        traceback.print_exc()
+        text = ""
 
     # Seitenanzahl ermitteln (nur für PDFs)
     page_count = 0
