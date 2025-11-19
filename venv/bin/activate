@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/shp-art/Documents/Github/WerkstattArchiv/venv"
+VIRTUAL_ENV="/Users/shp-art/Documents/Github/WerkstattArchiv_fresh/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

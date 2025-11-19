@@ -1,5 +1,5 @@
 {
-  "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Daten",
+  "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data",
   "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
   "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
   "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
@@ -8,16 +8,10 @@
   "folder_structure": {
     "folder_template": "{kunde}/{jahr}/{typ}",
     "filename_template": "{datum}_{typ}_{auftrag}.pdf",
-    "separator": "_",
     "replace_spaces": true,
     "remove_invalid_chars": true,
     "use_month_names": false,
-    "max_name_length": 50
-  },
-  "remote_logging": {
-    "enabled": false,
-    "server": "",
-    "port": 514,
-    "protocol": "UDP"
+    "max_name_length": 50,
+    "separator": "_"
   }
 }

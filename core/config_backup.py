@@ -21,6 +21,7 @@ class ConfigBackupManager:
     FILES_TO_BACKUP = [
         "config.json",                              # Hauptkonfiguration
         "patterns.json",                            # Erkennungsmuster
+        "config/keywords.json",                     # Schlagwörter-Konfiguration
         "data/vehicles.csv"                         # Fahrzeugdaten
     ]
     

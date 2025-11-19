@@ -1,22 +1,40 @@
 {
-  "timestamp": "2025-11-14T04:53:48.044449",
-  "version": "0.8.6",
+  "timestamp": "2025-11-19T05:52:30.009014",
+  "version": "0.8.7",
   "config": {
-    "root_dir": "/test/path",
-    "input_dir": "/test/eingang",
+    "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data",
+    "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
+    "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
+    "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
+    "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
+    "tesseract_path": null,
     "folder_structure": {
-      "folder_template": "{kunde}/{jahr}",
-      "filename_template": "{datum}_{typ}.pdf"
+      "folder_template": "{kunde}/{jahr}/{typ}",
+      "filename_template": "{datum}_{typ}_{auftrag}.pdf",
+      "replace_spaces": true,
+      "remove_invalid_chars": true,
+      "use_month_names": false,
+      "max_name_length": 50,
+      "separator": "_"
     }
   },
   "files": {
     "config.json": {
-      "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Daten",
+      "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data",
       "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
       "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
       "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
       "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
-      "tesseract_path": null
+      "tesseract_path": null,
+      "folder_structure": {
+        "folder_template": "{kunde}/{jahr}/{typ}",
+        "filename_template": "{datum}_{typ}_{auftrag}.pdf",
+        "replace_spaces": true,
+        "remove_invalid_chars": true,
+        "use_month_names": false,
+        "max_name_length": 50,
+        "separator": "_"
+      }
     },
     "patterns.json": {
       "kunden_nr": "(?:Kunden[- ]?Nr\\.?|Kundennummer|Kunde)[:\\s]*(\\d{5,6})",
@@ -33,6 +51,187 @@
       "hu": "(?:HU|Hauptuntersuchung)",
       "garantie": "Garantie"
     },
-    "data/vehicles.csv": "fin,kennzeichen,kunden_nr,marke,modell,erstzulassung,letzte_aktualisierung\nVR7BCZKXCME033281,SFB-KI 23E,28307,Citroën,C4 ELEC SHINE 136,,2025-11-11 20:07:21\n"
+    "config/keywords.json": {
+      "_info": "Schlagwort-Konfiguration für erweiterte Dokumenten-Suche",
+      "_hinweis": "Schlagwörter werden case-insensitive gesucht",
+      "kategorien": {
+        "Fehlercode": {
+          "beschreibung": "Fehlercodes und Diagnosecodes",
+          "schlagwoerter": [
+            "fehlercode",
+            "fehler-code",
+            "dtc",
+            "diagnostic trouble code",
+            "p0",
+            "p1",
+            "u0",
+            "u1",
+            "b0",
+            "b1",
+            "c0",
+            "c1",
+            "obd",
+            "fehler:"
+          ],
+          "aktiv": false
+        },
+        "Achsvermessung": {
+          "beschreibung": "Achsvermessungsprotokolle und Einstellwerte",
+          "schlagwoerter": [
+            "achsvermessung",
+            "achs-vermessung",
+            "spur",
+            "sturz",
+            "nachlauf",
+            "spreizung",
+            "vorspur",
+            "einzelspur",
+            "gesamtspur",
+            "geometrie",
+            "fahrwerksvermessung"
+          ],
+          "aktiv": true
+        },
+        "Diagnose": {
+          "beschreibung": "Diagnose und Prüfberichte",
+          "schlagwoerter": [
+            "diagnose",
+            "diagnosebericht",
+            "prüfung",
+            "prüfbericht",
+            "test",
+            "testbericht",
+            "messung",
+            "messprotokoll",
+            "fehlersuche"
+          ],
+          "aktiv": false
+        },
+        "Inspektion": {
+          "beschreibung": "Inspektions- und Wartungsarbeiten",
+          "schlagwoerter": [
+            "inspektion",
+            "service",
+            "wartung",
+            "ölwechsel",
+            "öl-service",
+            "intervall",
+            "durchsicht",
+            "checkup"
+          ],
+          "aktiv": false
+        },
+        "Reparatur": {
+          "beschreibung": "Reparatur- und Instandsetzungsarbeiten",
+          "schlagwoerter": [
+            "reparatur",
+            "repariert",
+            "instandsetzung",
+            "instandgesetzt",
+            "austausch",
+            "ausgetauscht",
+            "montage",
+            "demontage",
+            "gewechselt",
+            "ersetzt"
+          ],
+          "aktiv": false
+        },
+        "TÜV/AU": {
+          "beschreibung": "TÜV und Abgasuntersuchung",
+          "schlagwoerter": [
+            "tüv",
+            "tuev",
+            "hauptuntersuchung",
+            "hu",
+            "au",
+            "abgasuntersuchung",
+            "abgas-untersuchung",
+            "asu",
+            "prüfplakette"
+          ],
+          "aktiv": false
+        },
+        "Klimaanlage": {
+          "beschreibung": "Klimaanlagen-Service und -Wartung",
+          "schlagwoerter": [
+            "klimaanlage",
+            "klima",
+            "klimaservice",
+            "kältemittel",
+            "r134a",
+            "r1234yf",
+            "klimagas",
+            "klimakompressor",
+            "kondensator"
+          ],
+          "aktiv": false
+        },
+        "Bremsen": {
+          "beschreibung": "Bremsensystem und -wartung",
+          "schlagwoerter": [
+            "bremse",
+            "bremsen",
+            "bremsbelag",
+            "bremsbeläge",
+            "bremsscheibe",
+            "bremsscheiben",
+            "bremssattel",
+            "bremszylinder",
+            "bremsflüssigkeit",
+            "abs"
+          ],
+          "aktiv": false
+        },
+        "Reifen": {
+          "beschreibung": "Reifen und Räder",
+          "schlagwoerter": [
+            "reifen",
+            "pneu",
+            "rad",
+            "räder",
+            "felge",
+            "felgen",
+            "reifenwechsel",
+            "reifendruck",
+            "profiltiefe",
+            "rdks"
+          ],
+          "aktiv": false
+        },
+        "Motor": {
+          "beschreibung": "Motor und Motorsteuerung",
+          "schlagwoerter": [
+            "motor",
+            "motorsteuerung",
+            "motorsteuergerät",
+            "ecu",
+            "ecm",
+            "zündkerze",
+            "zündkerzen",
+            "einspritzung",
+            "turbolader",
+            "ventil"
+          ],
+          "aktiv": false
+        }
+      },
+      "_anleitung": {
+        "aktivierung": "Setze 'aktiv' auf true um Kategorie zu aktivieren",
+        "hinzufuegen": "Neue Schlagwörter zur 'schlagwoerter'-Liste hinzufügen",
+        "neue_kategorie": "Kopiere eine bestehende Kategorie und passe an",
+        "beispiel": {
+          "NeueKategorie": {
+            "beschreibung": "Beschreibung der Kategorie",
+            "schlagwoerter": [
+              "wort1",
+              "wort2",
+              "wort3"
+            ],
+            "aktiv": true
+          }
+        }
+      }
+    }
   }
 }

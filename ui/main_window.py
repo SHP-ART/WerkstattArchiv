@@ -196,6 +196,10 @@ class MainWindow(ctk.CTk):
             )
         
         self.config_backup_manager = ConfigBackupManager()
+        
+        # Prüfe ob Keywords-Backup im Basis-Verzeichnis existiert
+        self._restore_keywords_from_root()
+        
         self.keyword_detector = KeywordDetector()
         self.watchdog_observer = None
         self.continuous_scan_service = None  # Continuous Scan Service
@@ -431,9 +435,9 @@ class MainWindow(ctk.CTk):
         start_total = time.time()
         self.update_loading_progress(0.05, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
 
-        # Tabview erstellen OHNE command (wird später gesetzt!)
+        # Tabview erstellen MIT Tracking
         start = time.time()
-        self.tabview = ctk.CTkTabview(self)
+        self.tabview = ctk.CTkTabview(self, command=self._on_main_tab_changed)
         print(f"⏱️  TabView erstellt: {(time.time() - start) * 1000:.1f}ms")
 
         # KRITISCH: Tabview SOFORT packen (muss sichtbar sein für Rendering!)
@@ -489,8 +493,8 @@ class MainWindow(ctk.CTk):
                 # Animation fertig → Fade zur App
                 self.update_loading_progress(1.0, "✅ Fertig!", "")
                 self.after(200, self._show_gui)
-                # JETZT erst Tabs im Hintergrund laden
-                self.after(300, self._create_remaining_tabs_async)
+                # JETZT erst Tabs im Hintergrund laden (verzögert für sofortige Reaktion)
+                self.after(500, self._create_remaining_tabs_async)
         
         animate_step(0)
     
@@ -523,7 +527,8 @@ class MainWindow(ctk.CTk):
                     if elapsed > 50:  # Nur bei langsamen Tabs loggen
                         print(f"⏱️  {tab_name}: {elapsed:.1f}ms")
                 # Nächster Tab mit delay für bessere Responsiveness
-                self.after(10, lambda: load_next_tab(index + 1))
+                # Erhöhte Verzögerung für flüssige UI-Interaktion
+                self.after(100, lambda: load_next_tab(index + 1))
             else:
                 print(f"✓ Hintergrund-Tabs geladen in {(time.time() - start_async) * 1000:.0f}ms")
         
@@ -582,18 +587,16 @@ class MainWindow(ctk.CTk):
         print(f"✓ Hintergrund-Daten geladen in {elapsed:.0f}ms")
 
     def _on_tab_change_wrapper(self):
-        """Wrapper für Tab-Wechsel mit VOLLSTÄNDIGEM Performance-Logging."""
+        """Wrapper für Tab-Wechsel - Non-Blocking!"""
         start_total = time.time()
         
-        # User-Callback ausführen
+        current_tab = self.tabview.get()
+        
+        # User-Callback ausführen (non-blocking)
         self.on_tab_change()
         
-        # WICHTIG: Warte bis CustomTkinter fertig gerendert hat
-        self.update_idletasks()
-        
-        # Gesamtzeit messen (inkl. Rendering!)
+        # Gesamtzeit messen (nur Callback, KEIN Rendering-Wait!)
         elapsed_total = (time.time() - start_total) * 1000
-        current_tab = self.tabview.get()
         print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms")
 
     def on_tab_change(self):
@@ -794,13 +797,36 @@ class MainWindow(ctk.CTk):
         self.add_log("INFO", "Erstelle Einstellungen-Tab")
         tab = self.tabview.tab("Einstellungen")
         
-        # Scrollable Frame für alle Einstellungen
-        scroll_frame = ctk.CTkScrollableFrame(tab)
-        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # TabView für verschiedene Einstellungsbereiche
+        self.settings_tabview = ctk.CTkTabview(tab, command=self.on_settings_tab_changed)
+        self.settings_tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Tabs erstellen
+        self.settings_tabview.add("Pfade")
+        self.settings_tabview.add("Ordnerstruktur")
+        self.settings_tabview.add("Schlagwörter")
+        self.settings_tabview.add("Remote-Logging")
+        self.settings_tabview.add("Backup")
+        
+        # Scrollable Frames für jeden Tab
+        self.paths_scroll = ctk.CTkScrollableFrame(self.settings_tabview.tab("Pfade"))
+        self.paths_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        self.structure_scroll = ctk.CTkScrollableFrame(self.settings_tabview.tab("Ordnerstruktur"))
+        self.structure_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        self.keywords_scroll = ctk.CTkScrollableFrame(self.settings_tabview.tab("Schlagwörter"))
+        self.keywords_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        self.remote_log_scroll = ctk.CTkScrollableFrame(self.settings_tabview.tab("Remote-Logging"))
+        self.remote_log_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        self.backup_scroll = ctk.CTkScrollableFrame(self.settings_tabview.tab("Backup"))
+        self.backup_scroll.pack(fill="both", expand=True, padx=5, pady=5)
         
         # ========== PFAD-EINSTELLUNGEN ==========
-        path_frame = ctk.CTkFrame(scroll_frame)
-        path_frame.pack(fill="x", padx=10, pady=10)
+        path_frame = ctk.CTkFrame(self.paths_scroll)
+        path_frame.pack(fill="x", padx=5, pady=5)
         
         # Überschrift
         title = ctk.CTkLabel(path_frame, text="📁 Pfad-Einstellungen", 
@@ -841,35 +867,35 @@ class MainWindow(ctk.CTk):
                                            fg_color="green",
                                            hover_color="darkgreen")
             save_single_btn.pack(side="left", padx=5)
-
-        # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
-        self.create_folder_structure_settings(scroll_frame)
-
-        # ========== SCHLAGWORT-EINSTELLUNGEN ==========
-        self.create_keyword_settings(scroll_frame)
         
-        # ========== AKTIONS-BUTTONS ==========
-        action_frame = ctk.CTkFrame(scroll_frame)
-        action_frame.pack(fill="x", padx=10, pady=20)
+        # Aktions-Buttons unter Pfaden
+        path_action_frame = ctk.CTkFrame(self.paths_scroll)
+        path_action_frame.pack(fill="x", padx=5, pady=10)
         
         # Speichern-Button
-        save_btn = ctk.CTkButton(action_frame, text="💾 Alle Einstellungen speichern",
+        save_btn = ctk.CTkButton(path_action_frame, text="💾 Alle Einstellungen speichern",
                                 command=self.save_settings,
                                 font=ctk.CTkFont(size=14, weight="bold"))
         save_btn.pack(pady=10)
         
         # Kundendatenbank neu laden Button
-        reload_btn = ctk.CTkButton(action_frame, text="🔄 Kundendatenbank neu laden",
+        reload_btn = ctk.CTkButton(path_action_frame, text="🔄 Kundendatenbank neu laden",
                                   command=self.reload_customers)
         reload_btn.pack(pady=5)
         
         # Status-Label
-        self.settings_status = ctk.CTkLabel(action_frame, text="")
+        self.settings_status = ctk.CTkLabel(path_action_frame, text="")
         self.settings_status.pack(pady=5)
+
+        # ========== ORDNERSTRUKTUR-EINSTELLUNGEN ==========
+        self.create_folder_structure_settings(self.structure_scroll)
+
+        # ========== SCHLAGWORT-EINSTELLUNGEN ==========
+        self.create_keyword_settings(self.keywords_scroll)
         
         # ========== BACKUP-INFO ==========
-        backup_frame = ctk.CTkFrame(scroll_frame)
-        backup_frame.pack(fill="x", padx=10, pady=10)
+        backup_frame = ctk.CTkFrame(self.backup_scroll)
+        backup_frame.pack(fill="x", padx=5, pady=5)
         
         backup_title = ctk.CTkLabel(backup_frame, text="🛡️ Konfigurations-Backup", 
                                    font=ctk.CTkFont(size=16, weight="bold"))
@@ -917,9 +943,41 @@ class MainWindow(ctk.CTk):
                                    text_color="gray")
         restore_info.pack(pady=5)
         
+        # ========== KEYWORDS-BACKUP ==========
+        keywords_backup_frame = ctk.CTkFrame(self.backup_scroll)
+        keywords_backup_frame.pack(fill="x", padx=5, pady=10)
+        
+        keywords_backup_title = ctk.CTkLabel(keywords_backup_frame, text="🏷️ Schlagwörter-Backup", 
+                                            font=ctk.CTkFont(size=16, weight="bold"))
+        keywords_backup_title.pack(pady=10)
+        
+        # Info-Text
+        keywords_info_text = (
+            "Schlagwörter werden automatisch im Basis-Verzeichnis gesichert.\n"
+            "Beim Ändern des Basis-Verzeichnisses werden die Keywords automatisch\n"
+            "ins neue Verzeichnis kopiert und beim Start wiederhergestellt."
+        )
+        keywords_info_label = ctk.CTkLabel(keywords_backup_frame, text=keywords_info_text, 
+                                          font=ctk.CTkFont(size=12),
+                                          text_color="gray")
+        keywords_info_label.pack(pady=5)
+        
+        # Keywords-Backup Status (initial leer, wird später geladen)
+        self.keywords_backup_status_label = ctk.CTkLabel(keywords_backup_frame, 
+                                                        text="Lade Status...",
+                                                        text_color="gray",
+                                                        font=ctk.CTkFont(size=11))
+        self.keywords_backup_status_label.pack(pady=5)
+        
+        # Manuelles Backup erstellen
+        backup_keywords_btn = ctk.CTkButton(keywords_backup_frame, 
+                                           text="💾 Keywords jetzt sichern",
+                                           command=self.manual_backup_keywords)
+        backup_keywords_btn.pack(pady=10)
+        
         # ========== REMOTE-LOGGING EINSTELLUNGEN ==========
-        remote_log_frame = ctk.CTkFrame(scroll_frame)
-        remote_log_frame.pack(fill="x", padx=10, pady=10)
+        remote_log_frame = ctk.CTkFrame(self.remote_log_scroll)
+        remote_log_frame.pack(fill="x", padx=5, pady=5)
         
         remote_log_title = ctk.CTkLabel(remote_log_frame, text="📡 Remote-Logging (Syslog)", 
                                         font=ctk.CTkFont(size=16, weight="bold"))
@@ -997,7 +1055,7 @@ class MainWindow(ctk.CTk):
     def create_folder_structure_settings(self, parent_frame):
         """Erstellt die Einstellungen für Ordnerstruktur."""
         structure_frame = ctk.CTkFrame(parent_frame)
-        structure_frame.pack(fill="x", padx=10, pady=10)
+        structure_frame.pack(fill="x", padx=5, pady=5)
         
         # Überschrift
         title = ctk.CTkLabel(structure_frame, text="📂 Ordnerstruktur-Einstellungen", 
@@ -1053,7 +1111,6 @@ class MainWindow(ctk.CTk):
         self.folder_template_entry = ctk.CTkEntry(folder_frame, width=400)
         self.folder_template_entry.pack(side="left", padx=5, fill="x", expand=True)
         self.folder_template_entry.insert(0, self.folder_structure_manager.folder_template)
-        self.folder_template_entry.bind("<KeyRelease>", lambda e: self.update_structure_preview())
         
         # Dateiname-Template
         filename_frame = ctk.CTkFrame(structure_frame)
@@ -1065,7 +1122,6 @@ class MainWindow(ctk.CTk):
         self.filename_template_entry = ctk.CTkEntry(filename_frame, width=400)
         self.filename_template_entry.pack(side="left", padx=5, fill="x", expand=True)
         self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
-        self.filename_template_entry.bind("<KeyRelease>", lambda e: self.update_structure_preview())
         
         # Platzhalter-Info
         placeholder_frame = ctk.CTkFrame(structure_frame)
@@ -1108,20 +1164,17 @@ class MainWindow(ctk.CTk):
         
         self.replace_spaces_var = ctk.BooleanVar(value=self.folder_structure_manager.replace_spaces)
         replace_check = ctk.CTkCheckBox(options_frame, text="Leerzeichen durch Unterstriche ersetzen",
-                                       variable=self.replace_spaces_var,
-                                       command=self.update_structure_preview)
+                                       variable=self.replace_spaces_var)
         replace_check.pack(anchor="w", padx=20, pady=2)
         
         self.remove_invalid_var = ctk.BooleanVar(value=self.folder_structure_manager.remove_invalid_chars)
         invalid_check = ctk.CTkCheckBox(options_frame, text="Ungültige Zeichen entfernen",
-                                       variable=self.remove_invalid_var,
-                                       command=self.update_structure_preview)
+                                       variable=self.remove_invalid_var)
         invalid_check.pack(anchor="w", padx=20, pady=2)
         
         self.use_month_names_var = ctk.BooleanVar(value=self.folder_structure_manager.use_month_names)
         month_check = ctk.CTkCheckBox(options_frame, text="Monatsnamen statt Nummern (z.B. '11_November')",
-                                     variable=self.use_month_names_var,
-                                     command=self.update_structure_preview)
+                                     variable=self.use_month_names_var)
         month_check.pack(anchor="w", padx=20, pady=2)
         
         # Vorschau
@@ -1135,9 +1188,11 @@ class MainWindow(ctk.CTk):
         self.structure_preview = ctk.CTkTextbox(preview_frame, height=80,
                                                font=ctk.CTkFont(family="Courier", size=11))
         self.structure_preview.pack(fill="x", padx=5, pady=5)
-
-        # Initial-Vorschau (deferred - nicht beim Laden blockieren)
-        self.after(100, self.update_structure_preview)
+        
+        # Button zum manuellen Aktualisieren der Vorschau
+        preview_btn = ctk.CTkButton(preview_frame, text="🔄 Vorschau aktualisieren",
+                                   command=self.update_structure_preview)
+        preview_btn.pack(pady=5)
 
         # Profil-Beschreibung initial setzen
         self.update_profile_description()
@@ -1153,8 +1208,6 @@ class MainWindow(ctk.CTk):
             self.filename_template_entry.delete(0, "end")
             self.filename_template_entry.insert(0, self.folder_structure_manager.filename_template)
 
-            # Update Vorschau (deferred - asynchron aktualisieren)
-            self.after(50, self.update_structure_preview)
             self.update_profile_description()
             self.add_log("INFO", f"Profil '{profile_name}' geladen")
     
@@ -1198,7 +1251,7 @@ class MainWindow(ctk.CTk):
     def create_keyword_settings(self, parent_frame):
         """Erstellt die Einstellungen für Schlagwort-Erkennung."""
         keyword_frame = ctk.CTkFrame(parent_frame)
-        keyword_frame.pack(fill="x", padx=10, pady=10)
+        keyword_frame.pack(fill="x", padx=5, pady=5)
         
         # Überschrift
         title = ctk.CTkLabel(keyword_frame, text="🏷️  Schlagwort-Erkennung", 
@@ -1268,28 +1321,231 @@ class MainWindow(ctk.CTk):
         categories_frame.grid_columnconfigure(0, weight=1)
         categories_frame.grid_columnconfigure(1, weight=1)
         
-        # Bearbeiten-Bereich (zunächst versteckt)
+        # Bearbeiten-Bereich für Schlagwörter
         edit_frame = ctk.CTkFrame(keyword_frame)
-        edit_frame.pack(fill="x", padx=20, pady=10)
+        edit_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        edit_title = ctk.CTkLabel(edit_frame, text="⚙️ Erweiterte Einstellungen",
-                                 font=ctk.CTkFont(size=14, weight="bold"))
-        edit_title.pack(pady=5)
+        edit_title = ctk.CTkLabel(edit_frame, text="✏️ Schlagwörter bearbeiten",
+                                 font=ctk.CTkFont(size=16, weight="bold"))
+        edit_title.pack(pady=10)
         
-        edit_info = ctk.CTkLabel(
-            edit_frame,
-            text="Schlagwörter können in config/keywords.json manuell bearbeitet werden",
-            font=ctk.CTkFont(size=10, slant="italic")
+        # Kategorie-Auswahl
+        select_frame = ctk.CTkFrame(edit_frame)
+        select_frame.pack(fill="x", padx=10, pady=5)
+        
+        select_label = ctk.CTkLabel(select_frame, text="Kategorie:", width=100, anchor="w")
+        select_label.pack(side="left", padx=5)
+        
+        self.keyword_category_dropdown_var = ctk.StringVar(value=all_categories[0] if all_categories else "")
+        self.keyword_category_dropdown = ctk.CTkComboBox(
+            select_frame,
+            variable=self.keyword_category_dropdown_var,
+            values=all_categories,
+            command=self.load_category_keywords,
+            width=250
         )
-        edit_info.pack(pady=5)
+        self.keyword_category_dropdown.pack(side="left", padx=5)
         
-        # Button zum Öffnen der Konfigurationsdatei
-        open_config_btn = ctk.CTkButton(
-            edit_frame,
-            text="📝 Konfigurationsdatei öffnen",
-            command=self.open_keyword_config
+        # Info zur ausgewählten Kategorie
+        self.selected_category_info = ctk.CTkLabel(
+            select_frame,
+            text="",
+            font=ctk.CTkFont(size=11, slant="italic"),
+            text_color="gray"
         )
-        open_config_btn.pack(pady=5)
+        self.selected_category_info.pack(side="left", padx=10, fill="x", expand=True)
+        
+        # Schlagwörter-Liste (Textbox)
+        keywords_list_frame = ctk.CTkFrame(edit_frame)
+        keywords_list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        keywords_label = ctk.CTkLabel(keywords_list_frame, 
+                                      text="Schlagwörter (ein Wort pro Zeile):",
+                                      font=ctk.CTkFont(size=12, weight="bold"))
+        keywords_label.pack(anchor="w", padx=5, pady=5)
+        
+        self.keywords_textbox = ctk.CTkTextbox(keywords_list_frame, height=200,
+                                               font=ctk.CTkFont(family="Courier", size=11))
+        self.keywords_textbox.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(edit_frame)
+        button_frame.pack(fill="x", padx=10, pady=5)
+        
+        save_keywords_btn = ctk.CTkButton(
+            button_frame,
+            text="💾 Schlagwörter speichern",
+            command=self.save_category_keywords,
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        save_keywords_btn.pack(side="left", padx=5)
+        
+        reload_keywords_btn = ctk.CTkButton(
+            button_frame,
+            text="🔄 Zurücksetzen",
+            command=self.load_category_keywords
+        )
+        reload_keywords_btn.pack(side="left", padx=5)
+        
+        # Status
+        self.keywords_status = ctk.CTkLabel(button_frame, text="")
+        self.keywords_status.pack(side="left", padx=10)
+        
+        # Platzhalter-Text initial
+        self.keywords_textbox.insert("1.0", "← Wähle eine Kategorie aus, um Schlagwörter zu bearbeiten")
+        
+        # Flag für lazy loading
+        self._keywords_loaded = False
+    
+    def _on_main_tab_changed(self):
+        """Tracking für Haupt-Tab-Wechsel."""
+        import time
+        start_time = time.time()
+        
+        current_tab = self.tabview.get()
+        print(f"🔄 HAUPT-TAB Wechsel zu: '{current_tab}'")
+        
+        elapsed = (time.time() - start_time) * 1000
+        print(f"✓ HAUPT-TAB Wechsel abgeschlossen: {elapsed:.2f}ms")
+        
+        if elapsed > 100:
+            print(f"⚠️  WARNUNG: Haupt-Tab Wechsel zu langsam ({elapsed:.2f}ms)")
+    
+    def on_settings_tab_changed(self):
+        """Wird aufgerufen wenn Settings-Tab gewechselt wird."""
+        import time
+        start_time = time.time()
+        
+        current_tab = self.settings_tabview.get()
+        print(f"🔄 SETTINGS-TAB Wechsel zu: '{current_tab}'")
+        
+        # Lazy loading für Schlagwörter-Tab (mit Verzögerung)
+        if current_tab == "Schlagwörter" and not self._keywords_loaded:
+            self._keywords_loaded = True
+            # Verzögerte Ausführung, damit Tab sofort wechselt
+            self.after(100, self._delayed_load_keywords)
+        
+        # Lazy loading für Backup-Tab
+        elif current_tab == "Backup" and not getattr(self, '_backup_status_loaded', False):
+            self._backup_status_loaded = True
+            self.after(100, self._update_keywords_backup_status)
+        
+        elapsed = (time.time() - start_time) * 1000
+        print(f"✓ SETTINGS-TAB Wechsel abgeschlossen: {elapsed:.2f}ms")
+        
+        if elapsed > 100:
+            print(f"⚠️  WARNUNG: Settings-Tab Wechsel zu langsam ({elapsed:.2f}ms)")
+    
+    def _delayed_load_keywords(self):
+        """Verzögertes Laden der Keywords für bessere Performance."""
+        all_categories = self.keyword_detector.get_all_categories()
+        if all_categories:
+            self.load_category_keywords(all_categories[0])
+    
+    def _update_keywords_backup_status(self):
+        """Aktualisiert den Keywords-Backup Status."""
+        root_dir = self.config.get("root_dir", "")
+        if root_dir and os.path.exists(root_dir):
+            keywords_backup_path = os.path.join(root_dir, "keywords.json")
+            if os.path.exists(keywords_backup_path):
+                import time
+                mtime = os.path.getmtime(keywords_backup_path)
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+                keywords_status_text = f"✓ Backup gefunden: {timestamp}\n{keywords_backup_path}"
+                keywords_status_color = "green"
+            else:
+                keywords_status_text = "⚠️ Noch kein Backup im Basis-Verzeichnis"
+                keywords_status_color = "orange"
+        else:
+            keywords_status_text = "⚠️ Kein Basis-Verzeichnis konfiguriert"
+            keywords_status_color = "orange"
+        
+        if hasattr(self, 'keywords_backup_status_label'):
+            self.keywords_backup_status_label.configure(text=keywords_status_text,
+                                                       text_color=keywords_status_color)
+    
+    def load_category_keywords(self, category=None):
+        """Lädt die Schlagwörter einer Kategorie in die Textbox."""
+        if category is None:
+            category = self.keyword_category_dropdown_var.get()
+        
+        if not category:
+            return
+        
+        # Update Info-Label
+        cat_info = self.keyword_detector.get_category_info(category)
+        desc = cat_info.get("beschreibung", "")
+        keyword_count = len(cat_info.get("schlagwoerter", []))
+        self.selected_category_info.configure(text=f"{desc} · {keyword_count} Schlagwörter")
+        
+        # Lade Schlagwörter
+        keywords = cat_info.get("schlagwoerter", [])
+        
+        # Clear und fülle Textbox
+        self.keywords_textbox.delete("1.0", "end")
+        self.keywords_textbox.insert("1.0", "\n".join(keywords))
+        
+        self.keywords_status.configure(text="")
+    
+    def save_category_keywords(self):
+        """Speichert die bearbeiteten Schlagwörter."""
+        category = self.keyword_category_dropdown_var.get()
+        
+        # Hole Text aus Textbox
+        text = self.keywords_textbox.get("1.0", "end").strip()
+        
+        # Splittte in Zeilen und bereinige
+        keywords = [line.strip() for line in text.split("\n") if line.strip()]
+        
+        # Validiere
+        if not keywords:
+            self.keywords_status.configure(text="⚠️ Keine Schlagwörter angegeben", text_color="orange")
+            return
+        
+        # Speichere über keyword_detector
+        try:
+            import json
+            
+            # Lade aktuelle Config
+            with open(self.keyword_detector.config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # Update Schlagwörter
+            if category in config.get("kategorien", {}):
+                config["kategorien"][category]["schlagwoerter"] = keywords
+                
+                # Speichere in Original-Datei
+                with open(self.keyword_detector.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+                
+                # Erstelle Backup im Basis-Verzeichnis (wie config.json)
+                root_dir = self.config.get("root_dir", "")
+                if root_dir and os.path.exists(root_dir):
+                    backup_path = os.path.join(root_dir, "keywords.json")
+                    try:
+                        with open(backup_path, 'w', encoding='utf-8') as f:
+                            json.dump(config, f, ensure_ascii=False, indent=2)
+                        self.add_log("INFO", f"Keywords-Backup erstellt: {backup_path}")
+                    except Exception as e:
+                        self.add_log("WARNING", f"Keywords-Backup konnte nicht erstellt werden: {e}")
+                
+                # Reload keyword_detector
+                self.keyword_detector = KeywordDetector(self.keyword_detector.config_path)
+                
+                # Update UI
+                self.update_keyword_statistics()
+                self.load_category_keywords(category)
+                
+                self.keywords_status.configure(text=f"✓ {len(keywords)} Schlagwörter gespeichert", 
+                                             text_color="green")
+                self.add_log("SUCCESS", f"Schlagwörter für '{category}' aktualisiert ({len(keywords)} Einträge)")
+            else:
+                self.keywords_status.configure(text="❌ Kategorie nicht gefunden", text_color="red")
+                
+        except Exception as e:
+            self.keywords_status.configure(text=f"❌ Fehler: {str(e)}", text_color="red")
+            self.add_log("ERROR", f"Fehler beim Speichern der Schlagwörter: {e}")
     
     def on_keyword_category_changed(self, category: str):
         """Wird aufgerufen wenn Kategorie-Checkbox geändert wird."""
@@ -1317,6 +1573,69 @@ class MainWindow(ctk.CTk):
         stats_text = f"📊 {stats['total_categories']} Kategorien · {stats['total_keywords']} Schlagwörter · {stats['active_categories']} aktiv"
         if hasattr(self, 'keyword_stats_label'):
             self.keyword_stats_label.configure(text=stats_text)
+    
+    def _restore_keywords_from_root(self):
+        """Stellt keywords.json aus dem Basis-Verzeichnis wieder her, falls vorhanden."""
+        try:
+            root_dir = self.config.get("root_dir", "")
+            if not root_dir or not os.path.exists(root_dir):
+                return
+            
+            backup_path = os.path.join(root_dir, "keywords.json")
+            target_path = "config/keywords.json"
+            
+            # Prüfe ob Backup existiert
+            if os.path.exists(backup_path):
+                # Prüfe ob Backup neuer ist als lokale Datei
+                if not os.path.exists(target_path) or \
+                   os.path.getmtime(backup_path) > os.path.getmtime(target_path):
+                    
+                    import shutil
+                    shutil.copy2(backup_path, target_path)
+                    self.add_log("SUCCESS", f"Keywords aus Basis-Verzeichnis wiederhergestellt: {backup_path}")
+                    
+        except Exception as e:
+            self.add_log("WARNING", f"Keywords-Wiederherstellung fehlgeschlagen: {e}")
+    
+    def _backup_keywords_to_root(self, root_dir: str):
+        """Erstellt ein Backup von keywords.json im Basis-Verzeichnis."""
+        try:
+            source_path = "config/keywords.json"
+            if not os.path.exists(source_path):
+                return
+            
+            backup_path = os.path.join(root_dir, "keywords.json")
+            
+            import shutil
+            shutil.copy2(source_path, backup_path)
+            self.add_log("INFO", f"Keywords-Backup erstellt: {backup_path}")
+            
+            # Update Backup-Status im UI (falls vorhanden)
+            if hasattr(self, 'keywords_backup_status_label'):
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.keywords_backup_status_label.configure(
+                    text=f"✓ Letztes Backup: {timestamp}\n{backup_path}",
+                    text_color="green"
+                )
+                
+        except Exception as e:
+            self.add_log("WARNING", f"Keywords-Backup fehlgeschlagen: {e}")
+    
+    def manual_backup_keywords(self):
+        """Manuelles Backup der Keywords ins Basis-Verzeichnis."""
+        root_dir = self.config.get("root_dir", "")
+        
+        if not root_dir:
+            self.add_log("WARNING", "Kein Basis-Verzeichnis konfiguriert")
+            return
+        
+        if not os.path.exists(root_dir):
+            self.add_log("ERROR", f"Basis-Verzeichnis existiert nicht: {root_dir}")
+            return
+        
+        self._backup_keywords_to_root(root_dir)
+        self.add_log("SUCCESS", "Keywords manuell gesichert")
     
     def open_keyword_config(self):
         """Öffnet die Schlagwort-Konfigurationsdatei im Standard-Editor."""
@@ -2241,6 +2560,8 @@ class MainWindow(ctk.CTk):
     
     def browse_path(self, key: str):
         """Öffnet Dialog zur Pfadauswahl mit intelligentem Start-Verzeichnis."""
+        print(f"🔍 Browse-Button geklickt für: {key}")
+        
         # Cursor auf "Warten" setzen für visuelles Feedback
         self.configure(cursor="watch")
         self.update_idletasks()
@@ -2280,19 +2601,21 @@ class MainWindow(ctk.CTk):
                     initialdir=initial_dir
                 )
             else:
+                print(f"📂 Öffne Verzeichnis-Dialog für '{key}' mit initialdir: {initial_dir}")
                 path = filedialog.askdirectory(
                     title=f"{key} auswählen",
                     initialdir=initial_dir,
                     mustexist=False
                 )
+                print(f"📂 Ausgewählter Pfad: {path if path else '(abgebrochen)'}")
 
             if path:
                 self.entries[key].delete(0, "end")
                 self.entries[key].insert(0, path)
                 
-                # SPECIAL: Wenn root_dir geändert wird → Prüfe auf Archiv-Config
+                # SPECIAL: Wenn root_dir geändert wird → Intelligente Prüfung
                 if key == "root_dir":
-                    self._load_archive_config_if_exists(path)
+                    self._handle_root_dir_change(path)
 
         finally:
             # Cursor zurücksetzen
@@ -2367,6 +2690,263 @@ class MainWindow(ctk.CTk):
                 text_color="red"
             )
             self.add_log("ERROR", "Fehler beim Speichern", str(e))
+    
+    def _handle_root_dir_change(self, new_root_dir: str):
+        """
+        Intelligente Behandlung beim Wechsel des Basis-Verzeichnisses.
+        
+        1. Prüft ob config.json/keywords.json im neuen Verzeichnis existieren
+        2. Vergleicht vorhandene Einstellungen mit aktuellen
+        3. Fragt Benutzer bei Unterschieden
+        4. Bereitet Datenmigration vor (falls Ordnerstruktur unterschiedlich)
+        5. Speichert aktuelle Einstellungen ins neue Verzeichnis
+        """
+        if not new_root_dir or not os.path.exists(new_root_dir):
+            return
+        
+        print(f"🔄 Basis-Verzeichnis wird gewechselt: {new_root_dir}")
+        
+        # Pfade im neuen Verzeichnis
+        new_config_path = os.path.join(new_root_dir, "config.json")
+        new_keywords_path = os.path.join(new_root_dir, "keywords.json")
+        
+        # Prüfe ob Config existiert
+        config_exists = os.path.exists(new_config_path)
+        keywords_exists = os.path.exists(new_keywords_path)
+        
+        if config_exists:
+            # Config gefunden - Vergleiche Einstellungen
+            result = self._compare_and_ask_root_config(new_root_dir, new_config_path)
+            
+            if result == "USE_EXISTING":
+                # Benutzer will existierende Config übernehmen
+                self.add_log("INFO", "Existierende Config wird übernommen", new_config_path)
+                
+                # Lade Keywords falls vorhanden
+                if keywords_exists:
+                    self._restore_keywords_from_path(new_keywords_path)
+                    self.add_log("INFO", "Keywords aus Basis-Verzeichnis geladen")
+                
+                return
+            
+            elif result == "PREPARE_MIGRATION":
+                # Datenmigration vorbereiten
+                self._prepare_data_migration(new_root_dir, new_config_path)
+                return
+            
+            # Falls "OVERWRITE" → Weitermachen mit Speichern unten
+        
+        # Speichere aktuelle Config & Keywords ins neue Verzeichnis
+        self.config["root_dir"] = new_root_dir
+        
+        try:
+            # Config speichern
+            with open(new_config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+            print(f"✓ Config gespeichert: {new_config_path}")
+            
+            # Keywords speichern
+            self._backup_keywords_to_root(new_root_dir)
+            
+            self.add_log("SUCCESS", f"Basis-Verzeichnis geändert: {new_root_dir}",
+                        "Config und Keywords wurden gesichert")
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Speichern: {e}")
+            self.add_log("ERROR", f"Fehler beim Speichern: {e}")
+    
+    def _compare_and_ask_root_config(self, root_dir: str, config_path: str) -> str:
+        """
+        Vergleicht existierende Config im Root mit aktueller Config.
+        Zeigt Dialog mit Unterschieden und fragt Benutzer.
+        
+        Returns:
+            "USE_EXISTING" - Existierende Config übernehmen
+            "OVERWRITE" - Mit aktueller Config überschreiben
+            "PREPARE_MIGRATION" - Datenmigration vorbereiten
+            "CANCEL" - Abbrechen
+        """
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                existing_config = json.load(f)
+            
+            # Vergleiche wichtige Einstellungen
+            differences = []
+            migration_needed = False
+            
+            # Pfad-Einstellungen
+            path_keys = ["root_dir", "input_dir", "unclear_dir", "customers_file"]
+            for key in path_keys:
+                current = self.config.get(key, "")
+                existing = existing_config.get(key, "")
+                if current != existing:
+                    differences.append(f"📁 {key}:\n  Aktuell: {current}\n  Vorhanden: {existing}")
+            
+            # Ordnerstruktur-Einstellungen
+            current_structure = self.config.get("folder_structure", {})
+            existing_structure = existing_config.get("folder_structure", {})
+            
+            structure_keys = ["folder_template", "filename_template"]
+            for key in structure_keys:
+                current = current_structure.get(key, "")
+                existing = existing_structure.get(key, "")
+                if current != existing:
+                    differences.append(f"🗂️  {key}:\n  Aktuell: {current}\n  Vorhanden: {existing}")
+                    migration_needed = True
+            
+            # Keine Unterschiede
+            if not differences:
+                self.add_log("INFO", "Identische Config gefunden", 
+                            f"Einstellungen im Verzeichnis sind identisch.\n{config_path}")
+                return "USE_EXISTING"
+            
+            # Zeige Vergleichs-Dialog
+            from tkinter import messagebox
+            
+            diff_text = "\n\n".join(differences)
+            message = f"Im Basis-Verzeichnis wurde eine config.json gefunden:\n\n{diff_text}\n\n"
+            
+            if migration_needed:
+                message += "\n⚠️ ACHTUNG: Ordnerstruktur unterschiedlich!\n"
+                message += "Eine Datenmigration könnte erforderlich sein.\n\n"
+                message += "Optionen:\n"
+                message += "• JA - Vorhandene Config übernehmen\n"
+                message += "• NEIN - Aktuelle Config verwenden (überschreibt)\n"
+                message += "• ABBRECHEN - Migration vorbereiten"
+            else:
+                message += "\nWelche Config verwenden?\n"
+                message += "• JA - Vorhandene Config übernehmen\n"
+                message += "• NEIN - Aktuelle Config verwenden"
+            
+            # Custom Dialog mit 3 Buttons (bei Migration)
+            if migration_needed:
+                from tkinter import Toplevel, Label, Button, Frame
+                
+                dialog = Toplevel(self)
+                dialog.title("Config-Unterschiede gefunden")
+                dialog.geometry("700x500")
+                dialog.transient(self)
+                dialog.grab_set()
+                
+                # Text
+                import tkinter as tk
+                text_widget = tk.Text(dialog, wrap="word", height=20, width=80)
+                text_widget.pack(padx=20, pady=20, fill="both", expand=True)
+                text_widget.insert("1.0", message)
+                text_widget.config(state="disabled")
+                
+                result = {"value": "CANCEL"}
+                
+                def on_use_existing():
+                    result["value"] = "USE_EXISTING"
+                    dialog.destroy()
+                
+                def on_overwrite():
+                    result["value"] = "OVERWRITE"
+                    dialog.destroy()
+                
+                def on_prepare_migration():
+                    result["value"] = "PREPARE_MIGRATION"
+                    dialog.destroy()
+                
+                # Buttons
+                btn_frame = Frame(dialog)
+                btn_frame.pack(pady=10)
+                
+                Button(btn_frame, text="✓ Vorhandene übernehmen", command=on_use_existing,
+                       bg="green", fg="white", padx=20, pady=10).pack(side="left", padx=5)
+                Button(btn_frame, text="↻ Aktuelle verwenden", command=on_overwrite,
+                       bg="orange", fg="white", padx=20, pady=10).pack(side="left", padx=5)
+                Button(btn_frame, text="🔧 Migration vorbereiten", command=on_prepare_migration,
+                       bg="blue", fg="white", padx=20, pady=10).pack(side="left", padx=5)
+                
+                dialog.wait_window()
+                return result["value"]
+            
+            else:
+                # Einfacher Ja/Nein Dialog
+                response = messagebox.askyesno("Config-Unterschiede", message, parent=self)
+                return "USE_EXISTING" if response else "OVERWRITE"
+                
+        except Exception as e:
+            self.add_log("ERROR", f"Fehler beim Vergleich: {e}")
+            return "OVERWRITE"
+    
+    def _prepare_data_migration(self, root_dir: str, config_path: str):
+        """
+        Bereitet Datenmigration vor (wird noch nicht ausgeführt).
+        Erstellt Migrations-Plan und zeigt diesen an.
+        """
+        from tkinter import messagebox
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                existing_config = json.load(f)
+            
+            # Analysiere Unterschiede
+            current_structure = self.config.get("folder_structure", {})
+            existing_structure = existing_config.get("folder_structure", {})
+            
+            current_folder = current_structure.get("folder_template", "")
+            existing_folder = existing_structure.get("folder_template", "")
+            
+            current_file = current_structure.get("filename_template", "")
+            existing_file = existing_structure.get("filename_template", "")
+            
+            # Erstelle Migrations-Plan
+            migration_plan = {
+                "timestamp": datetime.now().isoformat(),
+                "source_structure": existing_structure,
+                "target_structure": current_structure,
+                "root_dir": root_dir,
+                "status": "PREPARED",
+                "changes": {
+                    "folder_template": {
+                        "from": existing_folder,
+                        "to": current_folder
+                    },
+                    "filename_template": {
+                        "from": existing_file,
+                        "to": current_file
+                    }
+                }
+            }
+            
+            # Speichere Migrations-Plan
+            migration_file = os.path.join(root_dir, ".migration_plan.json")
+            with open(migration_file, 'w', encoding='utf-8') as f:
+                json.dump(migration_plan, f, ensure_ascii=False, indent=2)
+            
+            message = (
+                f"📋 Migrations-Plan wurde erstellt!\n\n"
+                f"Datei: {migration_file}\n\n"
+                f"Änderungen:\n"
+                f"Ordner: {existing_folder}\n    → {current_folder}\n\n"
+                f"Datei: {existing_file}\n    → {current_file}\n\n"
+                f"⚠️ Die Migration muss manuell ausgeführt werden.\n"
+                f"Dies ist eine Vorbereitung für zukünftige Features."
+            )
+            
+            messagebox.showinfo("Migrations-Plan erstellt", message, parent=self)
+            self.add_log("INFO", "Migrations-Plan vorbereitet", migration_file)
+            
+        except Exception as e:
+            self.add_log("ERROR", f"Fehler bei Migrations-Vorbereitung: {e}")
+            messagebox.showerror("Fehler", f"Migration konnte nicht vorbereitet werden:\n{e}", parent=self)
+    
+    def _restore_keywords_from_path(self, keywords_path: str):
+        """Lädt keywords.json von einem spezifischen Pfad."""
+        try:
+            import shutil
+            target_path = "config/keywords.json"
+            shutil.copy2(keywords_path, target_path)
+            
+            # Reload keyword_detector
+            from services.keyword_detector import KeywordDetector
+            self.keyword_detector = KeywordDetector()
+            
+        except Exception as e:
+            self.add_log("ERROR", f"Keywords-Wiederherstellung fehlgeschlagen: {e}")
     
     def _load_archive_config_if_exists(self, archive_root: str):
         """
@@ -2710,6 +3290,10 @@ class MainWindow(ctk.CTk):
                 config_in_root = os.path.join(root_dir, "config.json")
                 with open(config_in_root, "w", encoding="utf-8") as f:
                     json.dump(self.config, f, indent=2, ensure_ascii=False)
+                
+                # Speichere auch keywords.json im Basis-Verzeichnis
+                self._backup_keywords_to_root(root_dir)
+                
                 config_location = f"Programm + Basis-Verzeichnis"
             else:
                 config_location = "Programmverzeichnis"

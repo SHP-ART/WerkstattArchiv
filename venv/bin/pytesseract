@@ -1,4 +1,4 @@
-#!/Users/shp-art/Documents/Github/WerkstattArchiv/venv/bin/python3.11
+#!/Users/shp-art/Documents/Github/WerkstattArchiv_fresh/venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
