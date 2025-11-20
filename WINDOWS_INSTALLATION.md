@@ -63,28 +63,42 @@ Beispiel:
 
 ---
 
-## 🔍 OCR für gescannte PDFs (Optional aber empfohlen!)
+## 🔍 OCR für gescannte PDFs
 
-⚠️ **Wichtig**: Ohne Tesseract funktioniert die Texterkennung in **gescannten** PDFs und Bildern **nicht**!
+✅ **NEU: EasyOCR wird automatisch installiert!**
 
-**Wofür wird Tesseract benötigt?**
+Die `install.bat` installiert jetzt automatisch **EasyOCR** - eine moderne Python-basierte OCR-Engine.
+
+**Vorteile von EasyOCR:**
+- ✅ Keine externe Installation nötig (reine Python-Lösung)
+- ✅ Funktioniert auf allen Windows-Versionen ohne Probleme
+- ✅ Keine Pfad-Konfiguration erforderlich
+- ✅ Oft bessere Texterkennung als Tesseract
+- ✅ Wird bei `install.bat` automatisch mit installiert
+
+**Was funktioniert mit OCR:**
 - ✅ Gescannte PDFs (ohne eingebetteten Text)
 - ✅ Bilder (JPG, PNG, TIFF)
 - ✅ Fotos von Dokumenten
-- ❌ **NICHT** für normale digitale PDFs (funktionieren ohne Tesseract)
+- ℹ️ Normale digitale PDFs funktionieren auch ohne OCR
 
-**Installation:**
+**Falls EasyOCR nicht installiert wurde:**
 
-### 🚀 Automatische Installation (Empfohlen):
+Nachträglich installieren mit:
+1. **Doppelklick** auf `install_easyocr.bat`
+2. Warte 5-10 Minuten (ca. 200 MB Download)
+3. Fertig!
+
+**Alternative: Tesseract (falls EasyOCR nicht funktioniert)**
+
+<details>
+<summary>Tesseract Installation (nur wenn EasyOCR Probleme macht)</summary>
+
+### 🚀 Automatische Installation:
 
 1. **Rechtsklick** auf `install_tesseract.bat`
 2. Wähle: **"Als Administrator ausführen"**
 3. Warte bis Installation abgeschlossen ist
-
-Das war's! Das Script:
-- ✅ Lädt Tesseract automatisch herunter
-- ✅ Installiert mit deutschen Sprachdaten
-- ✅ Trägt Pfad automatisch in config.json ein
 
 ### 📝 Manuelle Installation:
 
@@ -98,6 +112,8 @@ Das war's! Das Script:
    - ✅ **"Additional language data (download)"** anhaken
    - ✅ **"German"** auswählen (für deutsche Dokumente)
    - Standard-Pfad: `C:\Program Files\Tesseract-OCR`
+
+</details>
 
 3. **In WerkstattArchiv konfigurieren**:
    - WerkstattArchiv starten

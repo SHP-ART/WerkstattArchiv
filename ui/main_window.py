@@ -145,7 +145,10 @@ class MainWindow(ctk.CTk):
         self.config = config
         self.customer_manager = customer_manager
         self.unclear_documents: List[Dict[str, Any]] = []
-        self.document_index = DocumentIndex()
+        
+        # Initialisiere DocumentIndex mit root_dir für Server-Backups
+        root_dir = config.get("root_dir")
+        self.document_index = DocumentIndex(root_dir=root_dir)
 
         # Aktualisiere Datenbank-Indexes (schnell da CREATE INDEX IF NOT EXISTS)
         upgrade_result = self.document_index.upgrade_indexes()
@@ -899,15 +902,14 @@ class MainWindow(ctk.CTk):
         # Eingabefelder für Pfade
         self.entries = {}
         
-        labels = [
-            ("root_dir", "Basis-Verzeichnis:"),
-            ("input_dir", "Eingangsordner:"),
-            ("unclear_dir", "Unklar-Ordner:"),
-            ("customers_file", "Kundendatei (CSV):"),
-            ("tesseract_path", "Tesseract-Pfad (optional):"),
+        # Nur manuelle Eingaben
+        manual_labels = [
+            ("root_dir", "Basis-Verzeichnis:", True),
+            ("input_dir", "Eingangsordner:", True),
+            ("tesseract_path", "Tesseract-Pfad (optional):", False),
         ]
         
-        for key, label_text in labels:
+        for key, label_text, is_required in manual_labels:
             row_frame = ctk.CTkFrame(path_frame)
             row_frame.pack(fill="x", padx=20, pady=5)
             
@@ -930,6 +932,28 @@ class MainWindow(ctk.CTk):
                                            fg_color="green",
                                            hover_color="darkgreen")
             save_single_btn.pack(side="left", padx=5)
+        
+        # Info-Text für automatische Pfade
+        auto_info_frame = ctk.CTkFrame(path_frame)
+        auto_info_frame.pack(fill="x", padx=20, pady=10)
+        
+        auto_info_title = ctk.CTkLabel(auto_info_frame, 
+                                       text="📋 Automatisch generierte Pfade:",
+                                       font=ctk.CTkFont(size=12, weight="bold"))
+        auto_info_title.pack(anchor="w", padx=10, pady=(10, 5))
+        
+        root_dir = self.config.get("root_dir", "[Basis-Verzeichnis]")
+        auto_paths_text = (
+            f"• Unklar-Ordner: {root_dir}/Unklar\n"
+            f"• Duplikate-Ordner: {root_dir}/Duplikate\n"
+            f"• Kundendatei: {root_dir}/kunden.csv (wird automatisch erstellt)"
+        )
+        auto_info_label = ctk.CTkLabel(auto_info_frame, 
+                                      text=auto_paths_text,
+                                      font=ctk.CTkFont(size=11),
+                                      text_color="gray",
+                                      justify="left")
+        auto_info_label.pack(anchor="w", padx=10, pady=(0, 10))
         
         # Aktions-Buttons unter Pfaden
         path_action_frame = ctk.CTkFrame(self.paths_scroll)
@@ -2263,26 +2287,31 @@ class MainWindow(ctk.CTk):
         self.search_dateiname = ctk.CTkEntry(fields_frame, width=200)
         self.search_dateiname.grid(row=1, column=3, padx=5, pady=5)
         
+        # FIN/VIN (Fahrgestellnummer)
+        ctk.CTkLabel(fields_frame, text="FIN/VIN:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.search_fin = ctk.CTkEntry(fields_frame, width=150, placeholder_text="Letzte 8 oder komplett")
+        self.search_fin.grid(row=2, column=1, padx=5, pady=5)
+        
         # Dokumenttyp
-        ctk.CTkLabel(fields_frame, text="Typ:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(fields_frame, text="Typ:").grid(row=2, column=2, padx=5, pady=5, sticky="w")
         self.search_dokument_typ = ctk.CTkComboBox(fields_frame, width=150, values=["Alle"])
         self.search_dokument_typ.set("Alle")
-        self.search_dokument_typ.grid(row=2, column=1, padx=5, pady=5)
+        self.search_dokument_typ.grid(row=2, column=3, padx=5, pady=5)
         
         # Jahr
-        ctk.CTkLabel(fields_frame, text="Jahr:").grid(row=2, column=2, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(fields_frame, text="Jahr:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
         self.search_jahr = ctk.CTkComboBox(fields_frame, width=150, values=["Alle"])
         self.search_jahr.set("Alle")
-        self.search_jahr.grid(row=2, column=3, padx=5, pady=5)
+        self.search_jahr.grid(row=3, column=1, padx=5, pady=5)
         
         # Monat
-        ctk.CTkLabel(fields_frame, text="Monat:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(fields_frame, text="Monat:").grid(row=3, column=2, padx=5, pady=5, sticky="w")
         monate = ["Alle", "01 - Januar", "02 - Februar", "03 - März", "04 - April", 
                   "05 - Mai", "06 - Juni", "07 - Juli", "08 - August", 
                   "09 - September", "10 - Oktober", "11 - November", "12 - Dezember"]
         self.search_monat = ctk.CTkComboBox(fields_frame, width=150, values=monate)
         self.search_monat.set("Alle")
-        self.search_monat.grid(row=3, column=1, padx=5, pady=5)
+        self.search_monat.grid(row=3, column=3, padx=5, pady=5)
         
         # Buttons
         button_frame = ctk.CTkFrame(search_frame)
@@ -2688,6 +2717,7 @@ class MainWindow(ctk.CTk):
         """
         Speichert einen einzelnen Pfad-Wert.
         Bei root_dir wird auch die Archiv-Config geprüft und im Basis-Verzeichnis gespeichert.
+        Automatisch generierte Pfade (unclear_dir, customers_file) werden aus root_dir abgeleitet.
         
         Args:
             key: Der Schlüssel des zu speichernden Pfads (z.B. "root_dir", "input_dir")
@@ -2702,6 +2732,40 @@ class MainWindow(ctk.CTk):
         
         # Aktualisiere Config
         self.config[key] = new_value
+        
+        # Bei root_dir: Generiere automatisch unclear_dir, duplicates_dir und customers_file
+        if key == "root_dir" and new_value:
+            self.config["unclear_dir"] = os.path.join(new_value, "Unklar")
+            self.config["duplicates_dir"] = os.path.join(new_value, "Duplikate")
+            self.config["customers_file"] = os.path.join(new_value, "kunden.csv")
+            
+            # Erstelle Unklar-Ordner wenn nicht vorhanden
+            unclear_dir = self.config["unclear_dir"]
+            if not os.path.exists(unclear_dir):
+                try:
+                    os.makedirs(unclear_dir, exist_ok=True)
+                    self.add_log("INFO", "Unklar-Ordner erstellt", unclear_dir)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen des Unklar-Ordners", str(e))
+            
+            # Erstelle Duplikate-Ordner wenn nicht vorhanden
+            duplicates_dir = self.config["duplicates_dir"]
+            if not os.path.exists(duplicates_dir):
+                try:
+                    os.makedirs(duplicates_dir, exist_ok=True)
+                    self.add_log("INFO", "Duplikate-Ordner erstellt", duplicates_dir)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen des Duplikate-Ordners", str(e))
+            
+            # Erstelle leere kunden.csv wenn nicht vorhanden
+            customers_file = self.config["customers_file"]
+            if not os.path.exists(customers_file):
+                try:
+                    with open(customers_file, 'w', encoding='utf-8') as f:
+                        f.write("kundennr,name,strasse,plz,ort\n")
+                    self.add_log("INFO", "Kundendatei erstellt", customers_file)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen der Kundendatei", str(e))
         
         # Bei root_dir: Prüfe Archiv-Config und speichere dort
         if key == "root_dir" and new_value and os.path.exists(new_value):
@@ -3290,6 +3354,7 @@ class MainWindow(ctk.CTk):
         """
         Speichert die Einstellungen.
         WICHTIG: Schreibt IMMER die Archiv-Config im Daten-Ordner mit aktuellen Einstellungen.
+        Automatisch generierte Pfade werden aus root_dir abgeleitet.
         """
         # Sammle neue Einstellungen
         new_config = {}
@@ -3299,6 +3364,41 @@ class MainWindow(ctk.CTk):
                 new_config[key] = None
             else:
                 new_config[key] = value
+        
+        # Generiere automatisch unclear_dir, duplicates_dir und customers_file aus root_dir
+        root_dir = new_config.get("root_dir")
+        if root_dir:
+            new_config["unclear_dir"] = os.path.join(root_dir, "Unklar")
+            new_config["duplicates_dir"] = os.path.join(root_dir, "Duplikate")
+            new_config["customers_file"] = os.path.join(root_dir, "kunden.csv")
+            
+            # Erstelle Unklar-Ordner wenn nicht vorhanden
+            unclear_dir = new_config["unclear_dir"]
+            if not os.path.exists(unclear_dir):
+                try:
+                    os.makedirs(unclear_dir, exist_ok=True)
+                    self.add_log("INFO", "Unklar-Ordner erstellt", unclear_dir)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen des Unklar-Ordners", str(e))
+            
+            # Erstelle Duplikate-Ordner wenn nicht vorhanden
+            duplicates_dir = new_config["duplicates_dir"]
+            if not os.path.exists(duplicates_dir):
+                try:
+                    os.makedirs(duplicates_dir, exist_ok=True)
+                    self.add_log("INFO", "Duplikate-Ordner erstellt", duplicates_dir)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen des Duplikate-Ordners", str(e))
+            
+            # Erstelle leere kunden.csv wenn nicht vorhanden
+            customers_file = new_config["customers_file"]
+            if not os.path.exists(customers_file):
+                try:
+                    with open(customers_file, 'w', encoding='utf-8') as f:
+                        f.write("kundennr,name,strasse,plz,ort\n")
+                    self.add_log("INFO", "Kundendatei erstellt", customers_file)
+                except Exception as e:
+                    self.add_log("ERROR", "Fehler beim Erstellen der Kundendatei", str(e))
         
         # Speichere Ordnerstruktur-Einstellungen
         new_config["folder_structure"] = self.folder_structure_manager.get_config()
@@ -4364,14 +4464,10 @@ class MainWindow(ctk.CTk):
             self.is_processing = False
             return
 
-        if not duplicates_dir or not isinstance(duplicates_dir, str):
-            self.after(0, lambda: self.process_status.configure(text="Fehler: Duplikate-Ordner nicht konfiguriert", text_color="red"))
-            self.after(0, lambda: self.scan_btn.configure(state="normal"))
-            self.after(0, lambda: self.process_btn.configure(state="normal", text="▶️ Verarbeitung starten"))
-            self.is_processing = False
-            return
-
-        # Duplikate-Ordner erstellen, falls nicht vorhanden
+        # Duplikate-Ordner automatisch erstellen (wird aus root_dir generiert)
+        if not duplicates_dir:
+            duplicates_dir = os.path.join(root_dir, "Duplikate")
+            self.config["duplicates_dir"] = duplicates_dir
         os.makedirs(duplicates_dir, exist_ok=True)
         
         # Verwende die gescannten Dateien
@@ -4854,6 +4950,7 @@ class MainWindow(ctk.CTk):
         kunden_name = self.search_kunden_name.get().strip() or None
         auftrag_nr = self.search_auftrag_nr.get().strip() or None
         dateiname = self.search_dateiname.get().strip() or None
+        fin = self.search_fin.get().strip() or None
 
         dokument_typ = self.search_dokument_typ.get()
         if dokument_typ == "Alle":
@@ -4869,7 +4966,7 @@ class MainWindow(ctk.CTk):
             monat = int(monat_str.split(" - ")[0])
 
         # Debug: Zeige Suchparameter im Log
-        print(f"🔍 Suche mit: kunden_nr={kunden_nr}, kunden_name={kunden_name}, auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}, jahr={jahr}, monat={monat}, dateiname={dateiname}")
+        print(f"🔍 Suche mit: kunden_nr={kunden_nr}, kunden_name={kunden_name}, auftrag_nr={auftrag_nr}, dokument_typ={dokument_typ}, jahr={jahr}, monat={monat}, dateiname={dateiname}, fin={fin}")
 
         try:
             # Suche durchführen
@@ -4880,7 +4977,8 @@ class MainWindow(ctk.CTk):
                 jahr=jahr,
                 monat=monat,
                 kunden_name=kunden_name,
-                dateiname=dateiname
+                dateiname=dateiname,
+                fin=fin
             )
 
             print(f"✓ Suche erfolgreich: {len(results)} Ergebnisse")
@@ -4908,6 +5006,7 @@ class MainWindow(ctk.CTk):
         self.search_kunden_name.delete(0, "end")
         self.search_auftrag_nr.delete(0, "end")
         self.search_dateiname.delete(0, "end")
+        self.search_fin.delete(0, "end")
         self.search_dokument_typ.set("Alle")
         self.search_jahr.set("Alle")
         self.search_monat.set("Alle")

@@ -1,9 +1,9 @@
 {
   "root_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data",
   "input_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Eingang",
-  "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Unklar",
-  "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Duplikate",
-  "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/config/kunden.csv",
+  "unclear_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data/Unklar",
+  "duplicates_dir": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data/Duplikate",
+  "customers_file": "/Users/shp-art/Documents/WerkstattArchiv_Test/Data/kunden.csv",
   "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
   "folder_structure": {
     "folder_template": "{kunde}/{jahr}/{typ}",

@@ -68,14 +68,32 @@ echo.
 
 echo [4/6] Installiere Python-Pakete...
 echo Dies kann einige Minuten dauern...
+echo.
 python -m pip install --upgrade pip
+echo.
+echo Installiere Haupt-Pakete...
 pip install -r requirements.txt
 if %errorLevel% neq 0 (
     echo FEHLER: Installation der Pakete fehlgeschlagen!
     pause
     exit /b 1
 )
-echo Pakete erfolgreich installiert!
+echo.
+echo Installiere EasyOCR (Python-basierte OCR, keine Tesseract-Installation noetig)...
+echo HINWEIS: Dies kann 5-10 Minuten dauern (ca. 200 MB Download)
+echo.
+pip install easyocr
+if %errorLevel% neq 0 (
+    echo WARNUNG: EasyOCR konnte nicht installiert werden!
+    echo Das Programm funktioniert trotzdem, aber OCR wird nicht verfuegbar sein.
+    echo Sie koennen spaeter Tesseract installieren als Alternative.
+    echo.
+) else (
+    echo EasyOCR erfolgreich installiert!
+    echo OCR funktioniert jetzt OHNE Tesseract-Installation!
+    echo.
+)
+echo Alle Pakete erfolgreich installiert!
 echo.
 
 echo [5/6] Erstelle Standardkonfiguration...
@@ -112,21 +130,24 @@ echo ============================================================
 echo.
 echo Die Anwendung wurde erfolgreich installiert!
 echo.
+echo OCR-Status:
+echo   - EasyOCR installiert: Funktioniert OHNE Tesseract!
+echo   - Keine weitere OCR-Installation noetig
+echo.
 echo Naechste Schritte:
 echo.
-echo 1. Tesseract OCR installieren (optional):
-echo    https://github.com/UB-Mannheim/tesseract/wiki
+echo 1. Konfiguration anpassen:
+echo    - Starte die Anwendung
+echo    - Gehe zu "Einstellungen" ^> "Pfade"
+echo    - Setze Basis-Verzeichnis und Eingangsordner
 echo.
-echo 2. Ordnerstruktur erstellen:
-echo    - Doppelklick auf "setup_folders.bat"
-echo.
-echo 3. Kundendatei einrichten:
-echo    - Bearbeite: C:\WerkstattArchiv\config\kunden.csv
-echo.
-echo 4. Anwendung starten:
+echo 2. Anwendung starten:
 echo    - Doppelklick auf "start.bat"
 echo    - ODER Desktop-Verknuepfung verwenden
 echo.
 echo Eine Desktop-Verknuepfung wurde erstellt!
+echo.
+echo HINWEIS: Tesseract ist NICHT mehr noetig!
+echo          EasyOCR funktioniert rein in Python.
 echo.
 pause

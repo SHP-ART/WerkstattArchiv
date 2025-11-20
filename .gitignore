@@ -62,3 +62,4 @@ backups/
 # Windows
 Thumbs.db
 desktop.ini
+venv/

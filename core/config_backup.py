@@ -26,12 +26,10 @@ class ConfigBackupManager:
     ]
     
     # Wichtige Config-Keys die verglichen werden sollen
+    # unclear_dir, duplicates_dir, customers_file werden automatisch aus root_dir generiert
     IMPORTANT_CONFIG_KEYS = [
         "root_dir",
         "input_dir",
-        "unclear_dir",
-        "duplicates_dir",
-        "customers_file",
         "tesseract_path"
     ]
     

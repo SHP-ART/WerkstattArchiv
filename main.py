@@ -84,16 +84,22 @@ def load_config() -> Dict[str, Any]:
     default_config = {
         "root_dir": "D:/Scan/Daten",
         "input_dir": "D:/Scan/Eingang",
-        "unclear_dir": "D:/Scan/Unklar",
-        "duplicates_dir": "D:/Scan/Duplikate",
-        "customers_file": "D:/Scan/config/kunden.csv",
         "tesseract_path": None
     }
+    
+    # Generiere automatisch unclear_dir, duplicates_dir und customers_file
+    root_dir = default_config["root_dir"]
+    default_config["unclear_dir"] = os.path.join(root_dir, "Unklar")
+    default_config["duplicates_dir"] = os.path.join(root_dir, "Duplikate")
+    default_config["customers_file"] = os.path.join(root_dir, "kunden.csv")
     
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(default_config, f, indent=2, ensure_ascii=False)
     
     print("✓ Standardkonfiguration erstellt")
+    print(f"   → Unklar-Ordner: {default_config['unclear_dir']}")
+    print(f"   → Duplikate-Ordner: {default_config['duplicates_dir']}")
+    print(f"   → Kundendatei: {default_config['customers_file']}")
     return default_config
 
 
@@ -139,6 +145,16 @@ def main():
     # Konfiguration laden
     print("Lade Konfiguration...")
     config = load_config()
+    
+    # Generiere automatisch unclear_dir, duplicates_dir und customers_file falls nicht vorhanden
+    root_dir = config.get("root_dir")
+    if root_dir:
+        if "unclear_dir" not in config or not config["unclear_dir"]:
+            config["unclear_dir"] = os.path.join(root_dir, "Unklar")
+        if "duplicates_dir" not in config or not config["duplicates_dir"]:
+            config["duplicates_dir"] = os.path.join(root_dir, "Duplikate")
+        if "customers_file" not in config or not config["customers_file"]:
+            config["customers_file"] = os.path.join(root_dir, "kunden.csv")
     
     if not validate_config(config):
         print("Fehler: Ungültige Konfiguration. Bitte config.json prüfen.")
