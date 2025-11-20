@@ -4277,7 +4277,7 @@ class MainWindow(ctk.CTk):
 
                 # Update Progress (alle 5 Dateien, um Performance nicht zu blockieren)
                 if index % 5 == 0:
-                    self.after(0, lambda f=file, idx=index + 1: self._update_progress(f, idx))
+                    self.after(0, lambda f=file, idx=index + 1: self._update_progress(idx, f))
 
             # Schließe Progress-Dialog
             self.after(0, self._close_progress_dialog)
@@ -4395,22 +4395,32 @@ class MainWindow(ctk.CTk):
 
         # Fortschrittsbalken erstellen falls nicht vorhanden
         if self.progress_bar is None:
-            # Erstelle Progress-Container über der Tabelle
-            progress_container = ctk.CTkFrame(self.tabview.tab("Verarbeitung"), fg_color="transparent")
-            progress_container.pack(before=self.process_scroll.master, fill="x", padx=10, pady=(0, 5))
-            
-            self.progress_bar = ctk.CTkProgressBar(progress_container, width=400, height=20)
-            self.progress_bar.pack(pady=5)
-            
-            self.progress_label = ctk.CTkLabel(progress_container, text="", 
-                                              font=ctk.CTkFont(size=10))
-            self.progress_label.pack(pady=(0, 5))
+            try:
+                # Erstelle Progress-Container über der Tabelle
+                progress_container = ctk.CTkFrame(self.tabview.tab("Verarbeitung"), fg_color="transparent")
+                # Sichere Pack-Methode ohne before-Parameter
+                progress_container.pack(fill="x", padx=10, pady=(0, 5), side="top")
+                
+                self.progress_bar = ctk.CTkProgressBar(progress_container, width=400, height=20)
+                self.progress_bar.pack(pady=5)
+                
+                self.progress_label = ctk.CTkLabel(progress_container, text="", 
+                                                  font=ctk.CTkFont(size=10))
+                self.progress_label.pack(pady=(0, 5))
+            except Exception as e:
+                print(f"Fehler beim Erstellen der Progress-Bar: {e}")
+                # Fallback: Nutze nur Status-Label
+                self.progress_bar = None
+                self.progress_label = None
         else:
             # Widgets existieren bereits - nur anzeigen falls versteckt
-            if not self.progress_bar.winfo_ismapped():
-                self.progress_bar.pack(pady=5)
-            if self.progress_label and not self.progress_label.winfo_ismapped():
-                self.progress_label.pack(pady=(0, 5))
+            try:
+                if self.progress_bar and not self.progress_bar.winfo_ismapped():
+                    self.progress_bar.pack(pady=5)
+                if self.progress_label and not self.progress_label.winfo_ismapped():
+                    self.progress_label.pack(pady=(0, 5))
+            except Exception as e:
+                print(f"Fehler beim Anzeigen der Progress-Bar: {e}")
         
         # Fortschrittsbalken zurücksetzen
         self._update_inline_progress(0, f"Starte Verarbeitung von {len(self.scanned_files)} Datei(en)...")
