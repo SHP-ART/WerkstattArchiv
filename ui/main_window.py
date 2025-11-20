@@ -113,10 +113,14 @@ class ProgressDialog(ctk.CTkToplevel):
         return self.cancelled
 
     def close_dialog(self):
-        """Schließt den Dialog."""
+        """Schließt den Dialog sicher."""
         try:
-            self.destroy()
-        except:
+            # Prüfe ob Fenster noch existiert
+            if self.winfo_exists():
+                self.destroy()
+        except Exception as e:
+            # Fehler ignorieren - Dialog könnte bereits geschlossen sein
+            print(f"ProgressDialog.close_dialog: {e}")
             pass
 
 
@@ -4309,22 +4313,29 @@ class MainWindow(ctk.CTk):
         """Erstellt einen Progress-Dialog."""
         self.progress_dialog = ProgressDialog(self, "📊 Datei-Scan läuft...", total_items)
 
-    def _update_progress(self, filename: str, current: int):
+    def _update_progress(self, current: int, filename: str):
         """Aktualisiert den Progress-Dialog."""
         if hasattr(self, "progress_dialog") and self.progress_dialog:
             try:
-                self.progress_dialog.update_progress(current, filename)
-            except:
+                # Prüfe ob Dialog noch existiert
+                if self.progress_dialog.winfo_exists():
+                    self.progress_dialog.update_progress(current, filename)
+            except Exception as e:
+                print(f"_update_progress: {e}")
                 pass
 
     def _close_progress_dialog(self):
-        """Schließt den Progress-Dialog."""
+        """Schließt den Progress-Dialog sicher."""
         if hasattr(self, "progress_dialog") and self.progress_dialog:
             try:
-                self.progress_dialog.close_dialog()
-            except:
+                # Prüfe ob Dialog-Fenster noch existiert
+                if self.progress_dialog.winfo_exists():
+                    self.progress_dialog.close_dialog()
+            except Exception as e:
+                print(f"_close_progress_dialog: {e}")
                 pass
-            self.progress_dialog = None
+            finally:
+                self.progress_dialog = None
 
     def _display_scanned_files(self, files):
         """Zeigt gescannte Dateien in der GUI an."""
