@@ -40,24 +40,44 @@ if exist "venv\Scripts\python.exe" (
     echo [%date% %time%] Nutze venv: venv\Scripts\python.exe >> "%LOGFILE%"
     
     REM Teste Python-Version
+    echo Python-Version:
     venv\Scripts\python.exe --version
     echo.
+    
+    REM Prüfe wichtige Pakete
+    echo Pruefe Pakete...
+    venv\Scripts\python.exe -c "import customtkinter; print('[OK] customtkinter verfuegbar')" 2>nul
+    if %ERRORLEVEL% NEQ 0 (
+        echo [WARNUNG] customtkinter nicht installiert!
+        echo Bitte fuehre install.bat aus.
+        echo.
+    )
     
     REM Starte mit Python (mit Konsolenfenster für Fehlerausgabe)
     echo Starte WerkstattArchiv...
     echo Hinweis: Konsolenfenster bleibt offen fuer Fehlerausgabe
+    echo Falls Fehler auftreten, siehe logs\werkstatt.log
     echo.
     venv\Scripts\python.exe main.py
     
+    REM Speichere Exit-Code sofort
+    set EXIT_CODE=%ERRORLEVEL%
+    echo [%date% %time%] Exit-Code: %EXIT_CODE% >> "%LOGFILE%"
+    
     REM Prüfe Exit-Code
-    if %ERRORLEVEL% NEQ 0 (
+    if %EXIT_CODE% NEQ 0 (
         echo.
         echo ============================================================
-        echo FEHLER: Programm wurde mit Fehlercode %ERRORLEVEL% beendet!
+        echo FEHLER: Programm wurde mit Fehlercode %EXIT_CODE% beendet!
         echo ============================================================
         echo.
-        echo [%date% %time%] FEHLER: Exit-Code %ERRORLEVEL% >> "%LOGFILE%"
+        echo [%date% %time%] FEHLER: Exit-Code %EXIT_CODE% >> "%LOGFILE%"
         echo Siehe logs\werkstatt.log fuer Details
+        echo.
+        echo Moegliche Ursachen:
+        echo - Pakete fehlen (fuehre install.bat aus)
+        echo - Python-Version inkompatibel (verwende Python 3.11 statt 3.13)
+        echo - Siehe start.log und logs\werkstatt.log
         echo.
         pause
         exit /b %ERRORLEVEL%
