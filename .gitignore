@@ -50,6 +50,9 @@ beispiel_auftraege/
 *.jpg
 *.jpeg
 
+# Ausnahme: Logo darf committed werden
+!Logo/Logo.jpg
+
 # Backups (enthalten sensible Daten)
 backups/
 *.zip
