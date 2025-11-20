@@ -1,14 +1,15 @@
 # WerkstattArchiv
 
-**Version 0.8.8** (Aktuell - mit 40-75% Performance-Speedup)
+**Version 0.9.0** (Aktuell - Performance & UI Verbesserungen)
 
 Lokale Python-Desktop-Anwendung zur automatischen Verwaltung von Werkstattdokumenten.
 
 ## Features
 
 - ✅ Automatische Dokumenten-Analyse (PDF & Bilder)
-- ✅ OCR-Unterstützung mit Tesseract
+- ✅ **OCR-Unterstützung mit EasyOCR** - Reine Python-Lösung, keine externe Installation nötig
 - ✅ **⚡ Hochperformant** - 40-75% Speedup durch optimierte Caches und Batch-Processing
+- ✅ **⚡ Blitzschnelle UI** - Tab-Wechsel in 0ms, keine Blockierungen mehr
 - ✅ **Flexible Ordnerstrukturen** - 9 Profile wählbar (Standard, Mit Kundennummer, Chronologisch, etc.)
 - ✅ **Archiv-spezifische Konfiguration** - Jedes Archiv speichert seine eigene Struktur
 - ✅ **🛡️ Konfigurations-Backup** - Automatische Sicherung im data/-Ordner, Auto-Restore bei Neuinstallation
@@ -81,11 +82,13 @@ WerkstattArchiv/
 
 **Schnellinstallation für Windows:**
 1. Rechtsklick auf `install.bat` → "Als Administrator ausführen"
-2. Warte bis Installation abgeschlossen
+2. Warte bis Installation abgeschlossen (inkl. EasyOCR Download ~200MB)
 3. **Programmstart (wähle eine Variante):**
    - `start.bat` - Standard (Konsole verschwindet automatisch)
    - `start_debug.bat` - Mit Konsole (für Debugging)
    - `start_silent.vbs` - Komplett unsichtbar (kein Fenster)
+
+💡 **OCR wird automatisch installiert** - Keine manuelle Konfiguration nötig!
 
 📖 **Detaillierte Anleitung:** Siehe [WINDOWS_INSTALLATION.md](WINDOWS_INSTALLATION.md)
 
@@ -110,28 +113,24 @@ cd WerkstattArchiv
 pip install -r requirements.txt
 ```
 
-### Schritt 3: Tesseract OCR installieren (optional aber empfohlen!)
+### Schritt 3: EasyOCR installieren (automatisch)
 
-⚠️ **Wichtig**: Tesseract wird **nur** für gescannte PDFs/Bilder benötigt. Digitale PDFs funktionieren ohne!
+💡 **Keine manuelle Installation nötig!** EasyOCR wird automatisch mit `pip install -r requirements.txt` installiert.
 
-**Windows:**
-- Download: https://github.com/UB-Mannheim/tesseract/wiki
-- Installiere mit deutscher Sprachdaten-Option
-- Detaillierte Anleitung: siehe [TESSERACT_SETUP.md](docs/TESSERACT_SETUP.md)
-- Pfad in GUI-Einstellungen eintragen: `C:\Program Files\Tesseract-OCR\tesseract.exe`
+**Was ist EasyOCR?**
+- 🐍 Pure Python OCR-Lösung
+- 🚀 Keine externe Software nötig
+- 🌍 Unterstützt Deutsch und Englisch
+- 📦 ~200 MB Download beim ersten Start
+- ✨ Oft bessere Texterkennung als Tesseract
 
-**macOS:**
-```bash
-brew install tesseract
-brew install tesseract-lang
-```
+**Vorteile:**
+- ✅ Funktioniert auf allen Betriebssystemen ohne Probleme
+- ✅ Keine Pfad-Konfiguration erforderlich
+- ✅ Automatische Modell-Downloads
+- ✅ Kein Installationsaufwand
 
-**Linux:**
-```bash
-sudo apt-get install tesseract-ocr tesseract-ocr-deu
-```
-
-📖 **Vollständiger Setup-Guide**: [docs/TESSERACT_SETUP.md](docs/TESSERACT_SETUP.md)
+📖 **Setup-Guide**: [docs/EASYOCR_SETUP.md](docs/EASYOCR_SETUP.md)
 
 ### Schritt 4: Konfiguration anpassen
 
@@ -142,10 +141,11 @@ Bearbeite `config.json` oder nutze die GUI:
   "root_dir": "D:/Scan/Daten",
   "input_dir": "D:/Scan/Eingang",
   "unclear_dir": "D:/Scan/Unklar",
-  "customers_file": "D:/Scan/config/kunden.csv",
-  "tesseract_path": null
+  "customers_file": "D:/Scan/config/kunden.csv"
 }
 ```
+
+💡 **Hinweis**: `tesseract_path` wurde entfernt - EasyOCR benötigt keine Pfad-Konfiguration!
 
 ### Schritt 5: Kundendatei erstellen (optional)
 
@@ -248,6 +248,44 @@ python main.py
 ---
 
 ## 🆕 Changelog
+
+### Version 0.9.0 (20. November 2025)
+
+**🎯 Tesseract komplett entfernt - EasyOCR übernimmt:**
+- ❌ Tesseract-Abhängigkeit vollständig entfernt
+- ✅ EasyOCR als einzige OCR-Engine (reine Python-Lösung)
+- ✅ Keine externe Installation mehr nötig
+- ✅ Funktioniert auf allen Systemen ohne Konfiguration
+- 📝 Dokumentation aktualisiert (WINDOWS_INSTALLATION.md, README.md)
+
+**⚡ GUI-Performance massiv verbessert:**
+- 🚀 Tab-Wechsel jetzt in 0ms (vorher 770-1281ms)
+- ✅ 7 blockierende `self.update()` Calls entfernt
+- ✅ 5 `time.sleep()` Calls entfernt (5.4s gespart)
+- ✅ Mausklicks werden sofort registriert
+- ✅ GUI bleibt während Verarbeitung responsiv
+
+**📊 Remote Logging:**
+- ✅ Syslog-Integration (UDP/TCP)
+- ✅ Konfigurierbar über GUI (Einstellungen → Remote-Logging)
+- ✅ Automatische Fehler-Weiterleitung an zentralen Server
+
+**🔧 Verbesserungen:**
+- ✅ EasyOCR-Fehler werden im UI-Log angezeigt
+- ✅ Deferred Logging Pattern für Initialisierungsfehler
+- ✅ Einstellungen in Sub-Tabs organisiert
+- ✅ GUI-Editor für Schlagwörter
+- ✅ Intelligenter Config-Vergleich beim Basisverzeichnis-Wechsel
+- ✅ Keywords Auto-Backup
+- ✅ Logo/Logo.jpg zu Repository hinzugefügt
+
+**🗄️ Datenbank-Features:**
+- ✅ DB-Management Tab hinzugefügt
+- ✅ DB-Maintenance & Statistics Module
+- ✅ FIN-Search verbessert (8 oder 17 Zeichen)
+- 📖 Dokumentation: DATABASE_IMPROVEMENTS.md, FIN_SEARCH.md
+
+---
 
 ### Version 0.8.8 (15. November 2025)
 
