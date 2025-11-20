@@ -14,14 +14,8 @@ from services.vorlagen import VorlagenManager
 
 # Type-Hints für optionale Imports
 fitz = None
-pytesseract = None
-convert_from_path = None
-Image = None
 easyocr = None
 easyocr_reader = None
-
-# OCR Engine Status
-OCR_ENGINE = None  # "tesseract", "easyocr" oder None
 
 try:
     import fitz  # PyMuPDF
@@ -30,44 +24,55 @@ except ImportError:
     PYMUPDF_AVAILABLE = False
     print("Warnung: PyMuPDF nicht verfügbar. PDF-Textextraktion eingeschränkt.")
 
-# Versuche zuerst EasyOCR (keine externe Installation nötig!)
+# EasyOCR - Python-basierte OCR (keine externe Installation nötig)
+# Fehler werden für späteres Logging gespeichert (Logger ist beim Import noch nicht bereit)
+OCR_INIT_ERROR = None
+
 try:
     import easyocr  # type: ignore
     from PIL import Image  # type: ignore
-    print("✅ EasyOCR verfügbar - verwende Python-basierte OCR (keine externe Installation nötig)")
+    print("✅ EasyOCR verfügbar - verwende Python-basierte OCR")
     # Initialisiere Reader mit Deutsch und Englisch
     # gpu=False für CPU-only (funktioniert überall)
     easyocr_reader = easyocr.Reader(['de', 'en'], gpu=False, verbose=False)
-    OCR_ENGINE = "easyocr"
     OCR_AVAILABLE = True
-except ImportError:
-    print("⚠️  EasyOCR nicht verfügbar, versuche Tesseract...")
-    # Fallback auf Tesseract
-    try:
-        import pytesseract  # type: ignore
-        from pdf2image import convert_from_path  # type: ignore
-        from PIL import Image  # type: ignore
-        OCR_ENGINE = "tesseract"
-        OCR_AVAILABLE = True
-        print("✅ Tesseract verfügbar")
-    except ImportError:
-        OCR_AVAILABLE = False
-        OCR_ENGINE = None
-        print("❌ Keine OCR-Engine verfügbar. Installiere: pip install easyocr")
+except ImportError as e:
+    OCR_AVAILABLE = False
+    easyocr_reader = None
+    OCR_INIT_ERROR = ("ImportError", "EasyOCR nicht verfügbar. Installiere: pip install easyocr", str(e))
+    print(f"❌ EasyOCR nicht verfügbar. Installiere: pip install easyocr")
 except Exception as e:
-    print(f"⚠️  EasyOCR Fehler: {e}, versuche Tesseract...")
-    # Fallback auf Tesseract
-    try:
-        import pytesseract  # type: ignore
-        from pdf2image import convert_from_path  # type: ignore
-        from PIL import Image  # type: ignore
-        OCR_ENGINE = "tesseract"
-        OCR_AVAILABLE = True
-        print("✅ Tesseract verfügbar")
-    except ImportError:
-        OCR_AVAILABLE = False
-        OCR_ENGINE = None
-        print("❌ Keine OCR-Engine verfügbar")
+    OCR_AVAILABLE = False
+    easyocr_reader = None
+    import traceback
+    OCR_INIT_ERROR = (type(e).__name__, f"EasyOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
+    print(f"⚠️  EasyOCR Fehler: {e}")
+    print("❌ EasyOCR konnte nicht initialisiert werden")
+
+
+def log_ocr_init_error(log_callback):
+    """
+    Schreibt EasyOCR-Initialisierungsfehler ins Log.
+    Sollte aufgerufen werden, nachdem das Log-System bereit ist.
+    
+    Args:
+        log_callback: Callback-Funktion (typ, message) für UI-Log
+    """
+    global OCR_INIT_ERROR
+    if OCR_INIT_ERROR:
+        try:
+            error_type, error_msg, details = OCR_INIT_ERROR
+            
+            # Schreibe ins UI-Log
+            log_callback("ERROR", f"EasyOCR: {error_msg}")
+            
+            # Bei nicht-ImportError auch Details schreiben
+            if error_type != "ImportError" and details:
+                # Erste Zeile des Tracebacks
+                first_line = details.split('\n')[0]
+                log_callback("ERROR", f"Details: {first_line}")
+        except Exception as e:
+            print(f"Konnte EasyOCR-Fehler nicht loggen: {e}")
 
 
 # PatternManager für konfigurierbare Regex-Patterns
@@ -266,60 +271,37 @@ def get_pdf_page_count(file_path: str) -> int:
         return 0
 
 
-def extract_text_from_image_ocr(file_path: str, tesseract_path: Optional[str] = None) -> str:
+def extract_text_from_image_ocr(file_path: str) -> str:
     """
-    Extrahiert Text aus einem Bild mittels OCR.
-    Verwendet automatisch die beste verfügbare Engine:
-    1. EasyOCR (Python-basiert, keine externe Installation)
-    2. Tesseract (falls EasyOCR nicht verfügbar)
+    Extrahiert Text aus einem Bild mittels EasyOCR.
     
     Args:
         file_path: Pfad zur Bilddatei
-        tesseract_path: Optionaler Pfad zur Tesseract-Installation (nur für Tesseract)
         
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
-    if not OCR_AVAILABLE:
+    if not OCR_AVAILABLE or easyocr_reader is None:
         return ""
     
     try:
-        # EasyOCR (bevorzugt)
-        if OCR_ENGINE == "easyocr" and easyocr_reader is not None:
-            result = easyocr_reader.readtext(file_path, detail=0, paragraph=True)
-            text = "\n".join(result) if result else ""
-            return text
-        
-        # Tesseract (Fallback)
-        elif OCR_ENGINE == "tesseract" and pytesseract is not None and Image is not None:
-            if tesseract_path:
-                pytesseract.pytesseract.tesseract_cmd = tesseract_path  # type: ignore
-            
-            image = Image.open(file_path)  # type: ignore
-            text = pytesseract.image_to_string(image, lang="deu")  # type: ignore
-            return text
-        
-        return ""
+        result = easyocr_reader.readtext(file_path, detail=0, paragraph=True)
+        text = "\n".join(result) if result else ""
+        return text
         
     except Exception as e:
         from services.logger import log_error
-        error_msg = f"Bild-OCR ({OCR_ENGINE}) fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        error_msg = f"Bild-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
         print(f"❌ {error_msg}")
         log_error(error_msg)
-        if OCR_ENGINE == "tesseract" and tesseract_path:
-            print(f"   Tesseract-Pfad: {tesseract_path}")
-            print(f"   Pfad existiert: {os.path.exists(tesseract_path) if tesseract_path else 'N/A'}")
         import traceback
         traceback.print_exc()
         return ""
 
 
-def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = None) -> str:
+def extract_text_from_pdf_ocr(file_path: str) -> str:
     """
-    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei mittels OCR (für gescannte PDFs).
-    Verwendet automatisch die beste verfügbare Engine:
-    1. EasyOCR (Python-basiert, keine externe Installation)
-    2. Tesseract (falls EasyOCR nicht verfügbar)
+    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei mittels EasyOCR (für gescannte PDFs).
 
     WICHTIG: Es wird nur die erste Seite analysiert, da die relevanten
     Informationen (Kundennummer, Auftragsnummer, etc.) dort stehen.
@@ -327,80 +309,53 @@ def extract_text_from_pdf_ocr(file_path: str, tesseract_path: Optional[str] = No
 
     Args:
         file_path: Pfad zur PDF-Datei
-        tesseract_path: Optionaler Pfad zur Tesseract-Installation (nur für Tesseract)
 
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
-    if not OCR_AVAILABLE:
+    if not OCR_AVAILABLE or easyocr_reader is None:
         return ""
 
     try:
-        # EasyOCR (bevorzugt) - benötigt pdf2image für PDF->Bild Konvertierung
-        if OCR_ENGINE == "easyocr" and easyocr_reader is not None:
-            # pdf2image wird trotzdem benötigt
-            if convert_from_path is None:
-                try:
-                    from pdf2image import convert_from_path as _convert
-                    globals()['convert_from_path'] = _convert
-                except ImportError:
-                    print("⚠️  pdf2image nicht verfügbar. Installiere: pip install pdf2image")
-                    return ""
-            
-            # Konvertiere PDF zu Bildern (nur erste Seite)
-            images = convert_from_path(file_path, first_page=1, last_page=1)  # type: ignore
-            text = ""
-
-            if len(images) > 0:
-                # Speichere temporär als Bild für EasyOCR
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    images[0].save(tmp.name, "PNG")
-                    result = easyocr_reader.readtext(tmp.name, detail=0, paragraph=True)
-                    text = "\n".join(result) if result else ""
-                    os.unlink(tmp.name)
-                print(f"ℹ️  PDF-OCR (EasyOCR): Analysiere nur Seite 1")
-
-            return text
+        # pdf2image für PDF->Bild Konvertierung
+        try:
+            from pdf2image import convert_from_path
+        except ImportError:
+            print("⚠️  pdf2image nicht verfügbar. Installiere: pip install pdf2image")
+            return ""
         
-        # Tesseract (Fallback)
-        elif OCR_ENGINE == "tesseract" and pytesseract is not None and convert_from_path is not None:
-            if tesseract_path:
-                pytesseract.pytesseract.tesseract_cmd = tesseract_path  # type: ignore
+        # Konvertiere PDF zu Bildern (nur erste Seite)
+        images = convert_from_path(file_path, first_page=1, last_page=1)
+        text = ""
 
-            # Konvertiere PDF zu Bildern (nur erste Seite)
-            images = convert_from_path(file_path, first_page=1, last_page=1)  # type: ignore
-            text = ""
+        if len(images) > 0:
+            # Speichere temporär als Bild für EasyOCR
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                images[0].save(tmp.name, "PNG")
+                result = easyocr_reader.readtext(tmp.name, detail=0, paragraph=True)
+                text = "\n".join(result) if result else ""
+                os.unlink(tmp.name)
+            print(f"ℹ️  PDF-OCR: Analysiere nur Seite 1")
 
-            if len(images) > 0:
-                text = pytesseract.image_to_string(images[0], lang="deu")  # type: ignore
-                print(f"ℹ️  PDF-OCR (Tesseract): Analysiere nur Seite 1")
-
-            return text
-        
-        return ""
+        return text
         
     except Exception as e:
         from services.logger import log_error
-        error_msg = f"PDF-OCR ({OCR_ENGINE}) fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        error_msg = f"PDF-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
         print(f"❌ {error_msg}")
         log_error(error_msg)
-        if OCR_ENGINE == "tesseract" and tesseract_path:
-            print(f"   Tesseract-Pfad: {tesseract_path}")
-            print(f"   Pfad existiert: {os.path.exists(tesseract_path) if tesseract_path else 'N/A'}")
-        print(f"   OCR-Engine: {OCR_ENGINE}")
         import traceback
         traceback.print_exc()
         return ""
 
 
-def extract_text(file_path: str, tesseract_path: Optional[str] = None) -> str:
+def extract_text(file_path: str) -> str:
     """
     Extrahiert Text aus einer Datei (PDF oder Bild).
 
     Args:
         file_path: Pfad zur Datei
-        tesseract_path: Optionaler Pfad zur Tesseract-Installation
 
     Returns:
         Extrahierter Text
@@ -413,24 +368,23 @@ def extract_text(file_path: str, tesseract_path: Optional[str] = None) -> str:
 
         # Falls kein Text gefunden, OCR versuchen
         if not text.strip():
-            text = extract_text_from_pdf_ocr(file_path, tesseract_path)
+            text = extract_text_from_pdf_ocr(file_path)
 
         return text
 
     elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
-        return extract_text_from_image_ocr(file_path, tesseract_path)
+        return extract_text_from_image_ocr(file_path)
 
     return ""
 
 
-def extract_text_async(file_paths: list, tesseract_path: Optional[str] = None) -> Dict[str, str]:
+def extract_text_async(file_paths: list) -> Dict[str, str]:
     """
     Extrahiert Text aus mehreren Dateien ASYNCHRON mit ThreadPool (nicht blockierend).
     Perfekt für Batch-Verarbeitung von vielen Dokumenten ohne GUI-Blockierung.
 
     Args:
         file_paths: Liste von Dateipfaden
-        tesseract_path: Optionaler Pfad zur Tesseract-Installation
 
     Returns:
         Dictionary: {file_path: extracted_text}
@@ -439,7 +393,7 @@ def extract_text_async(file_paths: list, tesseract_path: Optional[str] = None) -
 
     # Submit all extraction jobs to thread pool
     future_to_path = {
-        OCR_EXECUTOR.submit(extract_text, fp, tesseract_path): fp
+        OCR_EXECUTOR.submit(extract_text, fp): fp
         for fp in file_paths
     }
 
@@ -612,7 +566,7 @@ def calculate_confidence(kunden_nr: Optional[str], auftrag_nr: Optional[str],
     return min(confidence, 1.0)
 
 
-def analyze_document(file_path: str, tesseract_path: Optional[str] = None, 
+def analyze_document(file_path: str,
                     vorlage_name: Optional[str] = None,
                     vorlagen_manager: Optional[VorlagenManager] = None,
                     legacy_resolver=None) -> Dict[str, Any]:
@@ -623,7 +577,6 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
     
     Args:
         file_path: Pfad zur Dokumentdatei
-        tesseract_path: Optionaler Pfad zur Tesseract-Installation
         vorlage_name: Name der zu verwendenden Vorlage (optional)
         vorlagen_manager: VorlagenManager-Instanz (optional)
         legacy_resolver: LegacyResolver-Instanz für Altaufträge (optional)
@@ -673,7 +626,7 @@ def analyze_document(file_path: str, tesseract_path: Optional[str] = None,
     
     # Text extrahieren
     try:
-        text = extract_text(file_path, tesseract_path)
+        text = extract_text(file_path)
         if text:
             print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
         else:

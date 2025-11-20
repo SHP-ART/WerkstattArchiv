@@ -65,15 +65,15 @@ Beispiel:
 
 ## 🔍 OCR für gescannte PDFs
 
-✅ **NEU: EasyOCR wird automatisch installiert!**
+✅ **EasyOCR wird automatisch installiert!**
 
-Die `install.bat` installiert jetzt automatisch **EasyOCR** - eine moderne Python-basierte OCR-Engine.
+Die `install.bat` installiert automatisch **EasyOCR** - eine moderne Python-basierte OCR-Engine.
 
 **Vorteile von EasyOCR:**
 - ✅ Keine externe Installation nötig (reine Python-Lösung)
 - ✅ Funktioniert auf allen Windows-Versionen ohne Probleme
 - ✅ Keine Pfad-Konfiguration erforderlich
-- ✅ Oft bessere Texterkennung als Tesseract
+- ✅ Automatisch aktiviert nach Installation
 - ✅ Wird bei `install.bat` automatisch mit installiert
 
 **Was funktioniert mit OCR:**
@@ -88,44 +88,6 @@ Nachträglich installieren mit:
 1. **Doppelklick** auf `install_easyocr.bat`
 2. Warte 5-10 Minuten (ca. 200 MB Download)
 3. Fertig!
-
-**Alternative: Tesseract (falls EasyOCR nicht funktioniert)**
-
-<details>
-<summary>Tesseract Installation (nur wenn EasyOCR Probleme macht)</summary>
-
-### 🚀 Automatische Installation:
-
-1. **Rechtsklick** auf `install_tesseract.bat`
-2. Wähle: **"Als Administrator ausführen"**
-3. Warte bis Installation abgeschlossen ist
-
-### 📝 Manuelle Installation:
-
-1. **Download Tesseract OCR**:
-   👉 https://github.com/UB-Mannheim/tesseract/wiki
-   
-   Empfohlen: `tesseract-ocr-w64-setup-5.3.x.exe` (64-bit)
-
-2. **Installation**:
-   - Installer starten
-   - ✅ **"Additional language data (download)"** anhaken
-   - ✅ **"German"** auswählen (für deutsche Dokumente)
-   - Standard-Pfad: `C:\Program Files\Tesseract-OCR`
-
-</details>
-
-3. **In WerkstattArchiv konfigurieren**:
-   - WerkstattArchiv starten
-   - Tab "Einstellungen" öffnen
-   - Tesseract-Pfad eintragen: `C:\Program Files\Tesseract-OCR\tesseract.exe`
-   - "Alle Einstellungen speichern" klicken
-
-**Testen ob Tesseract funktioniert:**
-- Gescanntes PDF in Eingangsordner legen
-- "Eingangsordner scannen" klicken
-- Wenn Text erkannt wird: ✅ Tesseract funktioniert
-- Wenn "Tesseract nicht gefunden": ❌ Pfad prüfen
 
 ---
 
@@ -181,13 +143,12 @@ Die EXE kann auf andere Windows-PCs kopiert werden!
 ### "Dokumente werden nicht erkannt"
 - Richtige Auftragsvorlage wählen (Standard/Alternativ)
 - Kundennummer im Dokument vorhanden?
-- Bei gescannten PDFs: Tesseract installiert? (siehe oben)
+- Bei gescannten PDFs: EasyOCR installiert? (siehe oben)
 
-### "Tesseract nicht gefunden" Warnung
-- Tesseract OCR ist nicht installiert (siehe OCR-Sektion oben)
-- Oder: Falscher Pfad in Einstellungen eingetragen
-- Prüfen: Existiert die Datei `C:\Program Files\Tesseract-OCR\tesseract.exe`?
-- **Hinweis**: Normale digitale PDFs funktionieren OHNE Tesseract!
+### "Keine Texterkennung bei gescannten PDFs"
+- EasyOCR wird automatisch bei Installation mitinstalliert
+- Falls nicht installiert: `install_easyocr.bat` ausführen
+- **Hinweis**: Normale digitale PDFs funktionieren auch ohne OCR!
 
 ### "Anwendung startet nicht"
 - Als Administrator ausführen
@@ -235,7 +196,7 @@ Neue Version installieren:
 ## 📁 Dateien Übersicht
 
 - `install.bat` - Hauptinstallation (als Admin)
-- `install_tesseract.bat` - Tesseract OCR installieren (als Admin)
+- `install_easyocr.bat` - EasyOCR nachträglich installieren
 - `start.bat` - Anwendung starten
 - `setup_folders.bat` - Ordnerstruktur erstellen
 - `build_exe.bat` - EXE-Datei erstellen

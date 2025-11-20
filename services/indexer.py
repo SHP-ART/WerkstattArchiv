@@ -16,18 +16,24 @@ DB_FILE = "werkstatt_index.db"
 class DocumentIndex:
     """Verwaltet den Index aller verarbeiteten Dokumente."""
 
-    def __init__(self, db_path: str = DB_FILE):
+    def __init__(self, db_path: str = DB_FILE, root_dir: Optional[str] = None):
         """
         Initialisiert den Dokumenten-Index.
 
         Args:
             db_path: Pfad zur SQLite-Datenbankdatei
+            root_dir: Basisverzeichnis für Backups (Server mit automatischen Backups)
         """
         self.db_path = db_path
+        self.root_dir = root_dir
         self._connection_timeout = 10  # Timeout für DB-Locks (verhindert Deadlocks)
         # Statistics Lazy-Loading Cache
         self._statistics_cache: Optional[Dict[str, Any]] = None
         self._init_database()
+        
+        # Maintenance und Statistics Services (Lazy-Loading)
+        self._maintenance = None
+        self._statistics = None
 
     def _init_database(self) -> None:
         """Erstellt die Datenbanktabelle und optimiert die Datenbank für Performance."""
@@ -480,7 +486,8 @@ class DocumentIndex:
               jahr: Optional[int] = None,
               monat: Optional[int] = None,
               kunden_name: Optional[str] = None,
-              dateiname: Optional[str] = None) -> List[Dict[str, Any]]:
+              dateiname: Optional[str] = None,
+              fin: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Sucht nach Dokumenten im Index.
         
@@ -492,6 +499,7 @@ class DocumentIndex:
             monat: Monat (exakte Suche, 1-12)
             kunden_name: Kundenname (LIKE-Suche)
             dateiname: Dateiname (LIKE-Suche)
+            fin: FIN/VIN (flexible Suche - findet komplett oder letzte 8 Zeichen)
             
         Returns:
             Liste von Dokumenten als Dictionaries
@@ -532,6 +540,22 @@ class DocumentIndex:
         if dateiname:
             query += " AND dateiname LIKE ?"
             params.append(f"%{dateiname}%")
+        
+        if fin:
+            # Flexible FIN-Suche: Findet sowohl komplette FIN als auch letzte 8 Zeichen
+            # Wenn Eingabe 8 Zeichen oder weniger: Suche in letzten 8 Zeichen
+            # Wenn Eingabe länger: Suche exakt oder als Teil
+            fin_clean = fin.strip().upper()
+            
+            if len(fin_clean) <= 8:
+                # Suche nach letzten 8 Zeichen (z.B. "12345678" findet "WDB1234567890012345678")
+                query += " AND (fin = ? OR SUBSTR(fin, -8) = ?)"
+                params.append(fin_clean)
+                params.append(fin_clean)
+            else:
+                # Suche nach kompletter FIN oder als Teil davon
+                query += " AND fin LIKE ?"
+                params.append(f"%{fin_clean}%")
         
         query += " ORDER BY verarbeitet_am DESC"
         
@@ -994,3 +1018,141 @@ class DocumentIndex:
             conn.close()
         
         return success
+    
+    # ========== Maintenance & Statistics Methods ==========
+    
+    @property
+    def maintenance(self):
+        """Lazy-Loading für Maintenance-Service."""
+        if self._maintenance is None:
+            from services.db_maintenance import DatabaseMaintenance
+            self._maintenance = DatabaseMaintenance(self.db_path, root_dir=self.root_dir)
+        return self._maintenance
+    
+    @property
+    def statistics(self):
+        """Lazy-Loading für Statistics-Service."""
+        if self._statistics is None:
+            from services.db_statistics import DatabaseStatistics
+            self._statistics = DatabaseStatistics(self.db_path)
+        return self._statistics
+    
+    def create_backup(self, reason: str = "manual") -> tuple:
+        """
+        Erstellt ein Datenbank-Backup.
+        
+        Args:
+            reason: Grund des Backups (manual, daily, before_migration, etc.)
+            
+        Returns:
+            Tuple (success, backup_path, message)
+        """
+        return self.maintenance.create_backup(reason)
+    
+    def restore_backup(self, backup_path: str) -> tuple:
+        """
+        Stellt ein Backup wieder her.
+        
+        Args:
+            backup_path: Pfad zum Backup
+            
+        Returns:
+            Tuple (success, message)
+        """
+        return self.maintenance.restore_backup(backup_path)
+    
+    def list_backups(self) -> list:
+        """
+        Listet alle verfügbaren Backups auf.
+        
+        Returns:
+            Liste von Backup-Informationen
+        """
+        return self.maintenance.list_backups()
+    
+    def optimize_database(self) -> tuple:
+        """
+        Optimiert die Datenbank (VACUUM, ANALYZE).
+        
+        Returns:
+            Tuple (success, message, statistics)
+        """
+        return self.maintenance.optimize_database()
+    
+    def health_check(self) -> dict:
+        """
+        Führt einen Health-Check der Datenbank durch.
+        
+        Returns:
+            Health-Status mit Details
+        """
+        return self.maintenance.health_check()
+    
+    def cleanup_old_entries(self, days: int = 365) -> tuple:
+        """
+        Löscht sehr alte Einträge (Optional).
+        
+        Args:
+            days: Einträge älter als X Tage löschen
+            
+        Returns:
+            Tuple (success, message, deleted_count)
+        """
+        return self.maintenance.cleanup_old_entries(days)
+    
+    def get_overview_stats(self) -> dict:
+        """Liefert Übersichts-Statistiken."""
+        return self.statistics.get_overview_stats()
+    
+    def get_customer_stats(self, kunden_nr: Optional[str] = None) -> list:
+        """
+        Liefert Kunden-spezifische Statistiken.
+        
+        Args:
+            kunden_nr: Optional - spezifische Kundennummer
+            
+        Returns:
+            Liste mit Kunden-Statistiken
+        """
+        return self.statistics.get_customer_stats(kunden_nr)
+    
+    def get_time_series_stats(self, days: int = 30) -> dict:
+        """
+        Liefert Zeitreihen-Statistiken.
+        
+        Args:
+            days: Anzahl Tage zurück
+            
+        Returns:
+            Dictionary mit Zeitreihen-Daten
+        """
+        return self.statistics.get_time_series_stats(days)
+    
+    def get_quality_stats(self) -> dict:
+        """Liefert Qualitäts-Statistiken."""
+        return self.statistics.get_quality_stats()
+    
+    def export_to_csv(self, filename: Optional[str] = None, filters: Optional[dict] = None) -> tuple:
+        """
+        Exportiert Dokumente als CSV.
+        
+        Args:
+            filename: Optional - Dateiname
+            filters: Optional - Filter (kunden_nr, jahr, dokument_typ, etc.)
+            
+        Returns:
+            Tuple (success, file_path or error_message)
+        """
+        return self.statistics.export_to_csv(filename, filters)
+    
+    def export_customer_report(self, kunden_nr: str) -> tuple:
+        """
+        Erstellt einen detaillierten Kunden-Report.
+        
+        Args:
+            kunden_nr: Kundennummer
+            
+        Returns:
+            Tuple (success, file_path or error_message)
+        """
+        return self.statistics.export_customer_report(kunden_nr)

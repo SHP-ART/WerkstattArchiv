@@ -16,7 +16,7 @@
 
 ✅ Installiert automatisch:
 - Alle Python-Pakete
-- **EasyOCR** (Python-basierte OCR - keine Tesseract-Installation nötig!)
+- **EasyOCR** (Python-basierte OCR für Texterkennung)
 - Desktop-Verknüpfung
 
 ### Schritt 3️⃣: Fertig! Programm starten

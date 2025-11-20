@@ -906,7 +906,6 @@ class MainWindow(ctk.CTk):
         manual_labels = [
             ("root_dir", "Basis-Verzeichnis:", True),
             ("input_dir", "Eingangsordner:", True),
-            ("tesseract_path", "Tesseract-Pfad (optional):", False),
         ]
         
         for key, label_text, is_required in manual_labels:
@@ -2130,6 +2129,13 @@ class MainWindow(ctk.CTk):
         
         # Initial-Nachricht
         self.add_log("INFO", "Log-System gestartet")
+        
+        # EasyOCR-Initialisierungsfehler loggen (falls vorhanden)
+        try:
+            from services.analyzer import log_ocr_init_error
+            log_ocr_init_error(self.add_log)
+        except Exception as e:
+            print(f"Fehler beim Loggen von OCR-Init-Error: {e}")
 
     def create_processing_tab(self):
         """Erstellt den Verarbeitungs-Tab."""
@@ -2686,12 +2692,6 @@ class MainWindow(ctk.CTk):
                     filetypes=[("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")],
                     initialdir=initial_dir
                 )
-            elif key == "tesseract_path":
-                path = filedialog.askopenfilename(
-                    title="Tesseract-Executable auswählen",
-                    filetypes=[("Executable", "*.exe"), ("Alle Dateien", "*.*")],
-                    initialdir=initial_dir
-                )
             else:
                 print(f"📂 Öffne Verzeichnis-Dialog für '{key}' mit initialdir: {initial_dir}")
                 path = filedialog.askdirectory(
@@ -2799,8 +2799,7 @@ class MainWindow(ctk.CTk):
                 "root_dir": "Basis-Verzeichnis",
                 "input_dir": "Eingangsordner",
                 "unclear_dir": "Unklar-Ordner",
-                "customers_file": "Kundendatei",
-                "tesseract_path": "Tesseract-Pfad"
+                "customers_file": "Kundendatei"
             }
             label = label_mapping.get(key, key)
             
@@ -3099,7 +3098,7 @@ class MainWindow(ctk.CTk):
                 
                 # Vergleiche mit aktueller Programm-Config
                 differences = []
-                keys_to_check = ["root_dir", "input_dir", "unclear_dir", "customers_file", "tesseract_path"]
+                keys_to_check = ["root_dir", "input_dir", "unclear_dir", "customers_file"]
                 
                 for key in keys_to_check:
                     current_val = self.config.get(key, "")
@@ -3825,8 +3824,7 @@ class MainWindow(ctk.CTk):
                     "input_dir": "Eingangsordner",
                     "unclear_dir": "Unklar-Ordner",
                     "duplicates_dir": "Duplikate-Ordner",
-                    "customers_file": "Kundendatei",
-                    "tesseract_path": "Tesseract-Pfad"
+                    "customers_file": "Kundendatei"
                 }
                 key_display = key_names.get(key, key)
                 
@@ -4239,8 +4237,7 @@ class MainWindow(ctk.CTk):
         # Button sofort deaktivieren - mit doppeltem Update für sofortige Reaktion
         self.scan_btn.configure(state="disabled", text="⏳ Scanne...")
         self.process_status.configure(text="🔍 Scanne Eingangsordner... Bitte warten...", text_color="blue")
-        self.update_idletasks()  # GUI-Layout aktualisieren
-        self.update()  # Alle pending Events verarbeiten
+        self.update_idletasks()  # GUI-Layout aktualisieren (NICHT blockierend!)
 
         # Scan im Thread ausführen für bessere Performance
         threading.Thread(target=self._scan_files_thread, args=(input_dir,), daemon=True).start()
@@ -4256,10 +4253,7 @@ class MainWindow(ctk.CTk):
             # Erstelle Progress-Dialog
             self.after(0, lambda: self._create_progress_dialog(progress_dialog, total_files))
 
-            # Kleine Verzögerung für Dialog-Creation
-            time.sleep(0.2)
-
-            # 2. Scan mit Progress-Feedback
+            # 2. Scan mit Progress-Feedback (Dialog wird async erstellt)
             files = []
             for index, file in enumerate(all_files):
                 # Prüfe ob Scan abgebrochen wurde
@@ -4412,7 +4406,7 @@ class MainWindow(ctk.CTk):
 
         # Status aktualisieren
         self.process_status.configure(text="🔄 VERARBEITUNG GESTARTET - Bitte warten...", text_color="blue")
-        self.update()  # GUI sofort aktualisieren (vollständig, nicht nur idletasks)
+        self.update_idletasks()  # GUI aktualisieren (NICHT blockierend!)
 
         # In separatem Thread verarbeiten
         thread = threading.Thread(target=self._process_documents)
@@ -4442,12 +4436,10 @@ class MainWindow(ctk.CTk):
             self.progress_dialog = ProgressDialog(self, f"⚙️ Verarbeite {files_count} Datei(en)...", files_count)
 
         self.after(0, create_dialog)
-        time.sleep(0.2)
 
         root_dir = self.config.get("root_dir")
         unclear_dir = self.config.get("unclear_dir")
         duplicates_dir = self.config.get("duplicates_dir")
-        tesseract_path = self.config.get("tesseract_path")
 
         # Validierung
         if not root_dir or not isinstance(root_dir, str):
@@ -4528,13 +4520,9 @@ class MainWindow(ctk.CTk):
                     )
                 self.after(0, update_start)
 
-                # Kurze Pause für GUI-Update
-                time.sleep(0.1)
-
                 # Dokument analysieren mit gewählter Vorlage und Legacy-Support
                 analysis = analyze_document(
                     file_path,
-                    tesseract_path,
                     vorlage_name=self.vorlagen_manager.get_active_vorlage().name,
                     vorlagen_manager=self.vorlagen_manager,
                     legacy_resolver=legacy_resolver
@@ -4577,7 +4565,6 @@ class MainWindow(ctk.CTk):
                             print(f"⚠️  Duplikat erkannt: {filename} → Auftrag {auftrag_nr} existiert bereits als {dup_name}")
                             print(f"   Verschoben nach: {dup_target_path}")
                             duplicate_count += 1
-                            time.sleep(0.2)
                             continue
                         except Exception as e:
                             print(f"❌ Fehler beim Verschieben des Duplikats: {e}")
@@ -4629,9 +4616,6 @@ class MainWindow(ctk.CTk):
                     self._update_result_row(f, a, s, c)
                 self.after(0, update_complete)
 
-                # Kurze Pause zwischen Dateien (für bessere Sichtbarkeit)
-                time.sleep(0.2)
-
             except Exception as e:
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
@@ -4641,7 +4625,6 @@ class MainWindow(ctk.CTk):
                     self._update_progress(idx+1, f"✗ Fehler: {f[:40]}...")
                     self._update_result_row(f, {}, f"✗ Fehler: {err}", "red")
                 self.after(0, update_error)
-                time.sleep(0.2)
 
         # Status aktualisieren mit Zusammenfassung (im Haupt-Thread)
         summary_parts = []
@@ -5438,7 +5421,6 @@ class MainWindow(ctk.CTk):
             filename = os.path.basename(file_path)
             root_dir = self.config.get("root_dir")
             unclear_dir = self.config.get("unclear_dir")
-            tesseract_path = self.config.get("tesseract_path")
             
             # Validierung
             if not root_dir or not unclear_dir:
@@ -5458,8 +5440,7 @@ class MainWindow(ctk.CTk):
             
             # Dokument analysieren
             analysis = analyze_document(
-                file_path, 
-                tesseract_path,
+                file_path,
                 vorlage_name=self.vorlagen_manager.get_active_vorlage().name,
                 vorlagen_manager=self.vorlagen_manager,
                 legacy_resolver=legacy_resolver
@@ -6106,7 +6087,7 @@ class MainWindow(ctk.CTk):
         from services.updater import UpdateManager
 
         self.update_status.configure(text="🔄 Prüfe auf Updates...", text_color="blue")
-        self.update()
+        self.update_idletasks()  # NICHT blockierend!
 
         # In Thread ausführen um GUI nicht zu blockieren
         def check_thread():
@@ -6307,7 +6288,7 @@ class MainWindow(ctk.CTk):
 
         # Backup erstellen VOR dem Neuaufbau
         self.db_status.configure(text="💾 Erstelle Backup vor Neuaufbau...", text_color="blue")
-        self.update()
+        self.update_idletasks()  # NICHT blockierend!
 
         from services.backup_manager import BackupManager
         from datetime import datetime
@@ -6327,7 +6308,7 @@ class MainWindow(ctk.CTk):
 
         # Backup erfolgreich
         self.db_status.configure(text=f"✓ Backup erstellt, baue Datenbank neu auf...", text_color="blue")
-        self.update()
+        self.update_idletasks()  # NICHT blockierend!
 
         def rebuild_thread():
             try:
@@ -6492,7 +6473,7 @@ class MainWindow(ctk.CTk):
                 text="💾 Erstelle automatisches Backup...",
                 text_color="blue"
             )
-            self.update()
+            self.update_idletasks()  # NICHT blockierend!
 
             # Automatisches Backup erstellen
             from services.backup_manager import BackupManager
@@ -6523,7 +6504,7 @@ class MainWindow(ctk.CTk):
                 text="🗑️ Lösche Datenbank...",
                 text_color="orange"
             )
-            self.update()
+            self.update_idletasks()  # NICHT blockierend!
 
             os.remove(db_path)
 

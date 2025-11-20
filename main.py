@@ -83,8 +83,7 @@ def load_config() -> Dict[str, Any]:
     
     default_config = {
         "root_dir": "D:/Scan/Daten",
-        "input_dir": "D:/Scan/Eingang",
-        "tesseract_path": None
+        "input_dir": "D:/Scan/Eingang"
     }
     
     # Generiere automatisch unclear_dir, duplicates_dir und customers_file
