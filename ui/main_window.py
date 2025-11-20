@@ -6103,9 +6103,13 @@ class MainWindow(ctk.CTk):
         # In Thread ausführen um GUI nicht zu blockieren
         def check_thread():
             try:
+                self.after(0, lambda: self.add_log("INFO", "Update-Check gestartet"))
                 updater = UpdateManager(self.version)
                 # Setze Update-Methode
                 updater.use_commit_check = self.update_use_commits_var.get()
+                method = "Commit-basiert" if updater.use_commit_check else "Release-basiert"
+                self.after(0, lambda m=method: self.add_log("INFO", f"Update-Methode: {m}"))
+                
                 update_available, latest_version, download_url = updater.check_for_updates()
 
                 # Ergebnis im Haupt-Thread anzeigen
@@ -6113,7 +6117,11 @@ class MainWindow(ctk.CTk):
                     update_available, latest_version, download_url, updater
                 ))
             except Exception as e:
-                print(f"Fehler beim Update-Check: {e}")
+                error_msg = f"Fehler beim Update-Check: {type(e).__name__}: {e}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                self.after(0, lambda e=error_msg: self.add_log("ERROR", f"Update-Check: {e}"))
                 self.after(0, lambda: self.update_status.configure(
                     text=f"✗ Fehler beim Update-Check: {str(e)[:50]}",
                     text_color="red"
@@ -6130,6 +6138,7 @@ class MainWindow(ctk.CTk):
                 text=f"✨ Update verfügbar: v{latest_version}", 
                 text_color="green"
             )
+            self.add_log("INFO", f"Update verfügbar: {latest_version}")
             
             # Release Notes holen (Issue: Truncated release notes)
             release_notes = updater.get_release_notes()
@@ -6154,6 +6163,7 @@ class MainWindow(ctk.CTk):
                 text=f"✓ Aktuell (v{self.version})", 
                 text_color="green"
             )
+            self.add_log("INFO", f"Keine Updates verfügbar - bereits aktuell (v{self.version})")
             messagebox.showinfo(
                 "Keine Updates", 
                 f"Sie verwenden bereits die neueste Version (v{self.version})."
@@ -6200,17 +6210,27 @@ class MainWindow(ctk.CTk):
         def install_thread():
             """Installiert Update in separatem Thread mit Fehlerbehandlung."""
             try:
+                self.after(0, lambda: self.add_log("INFO", "Update-Installation gestartet"))
                 success, message = updater.download_and_install_update(
                     download_url,
                     progress_callback
                 )
+
+                if success:
+                    self.after(0, lambda: self.add_log("SUCCESS", "Update erfolgreich installiert"))
+                else:
+                    self.after(0, lambda m=message: self.add_log("ERROR", f"Update fehlgeschlagen: {m}"))
 
                 # Ergebnis anzeigen
                 self.after(0, lambda: self._handle_update_result(
                     success, message, progress_window, updater
                 ))
             except Exception as e:
-                error_msg = f"❌ Unerwarteter Fehler bei Update-Installation:\n{str(e)}"
+                error_msg = f"❌ Unerwarteter Fehler bei Update-Installation:\n{type(e).__name__}: {str(e)}"
+                print(error_msg)
+                import traceback
+                traceback.print_exc()
+                self.after(0, lambda e=error_msg: self.add_log("ERROR", f"Update-Installation: {e}"))
                 self.after(0, lambda: self._handle_update_result(
                     False, error_msg, progress_window, updater
                 ))

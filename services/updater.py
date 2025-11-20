@@ -60,17 +60,15 @@ class UpdateManager:
         Returns:
             Tuple (update_available, commit_info, download_url)
         """
-        from services.logger import log_info, log_error
-        
         try:
-            log_info("Update-Check: Prüfe auf neue Commits...")
+            print("🔍 Update-Check: Prüfe auf neue Commits...")
             
             # Hole aktuellen lokalen Commit-Hash
             local_commit = self._get_local_commit_hash()
-            log_info(f"Lokaler Commit: {local_commit or 'Unbekannt'}")
+            print(f"📍 Lokaler Commit: {local_commit or 'Unbekannt'}")
             
             # Hole neuesten Remote Commit
-            log_info(f"Rufe Remote-Commits ab: {self.GITHUB_COMMITS_URL}")
+            print(f"🌐 Rufe Remote-Commits ab: {self.GITHUB_COMMITS_URL}")
             ssl_context = ssl._create_unverified_context()
             request = urllib.request.Request(
                 self.GITHUB_COMMITS_URL,
@@ -79,24 +77,27 @@ class UpdateManager:
             
             with urllib.request.urlopen(request, timeout=10, context=ssl_context) as response:
                 status_code = response.getcode()
-                log_info(f"HTTP Status: {status_code}")
+                print(f"✓ HTTP Status: {status_code}")
                 data = json.loads(response.read().decode('utf-8'))
             
             remote_commit = data.get('sha', '')[:7]  # Kurze Version
             commit_message = data.get('commit', {}).get('message', '').split('\n')[0]
             commit_date = data.get('commit', {}).get('author', {}).get('date', '')
             
-            log_info(f"Remote Commit: {remote_commit} - {commit_message}")
-            log_info(f"Commit Datum: {commit_date}")
+            print(f"📌 Remote Commit: {remote_commit} - {commit_message}")
+            print(f"📅 Commit Datum: {commit_date}")
             
             if not remote_commit:
-                log_error("Kein Remote-Commit gefunden in API-Response")
+                print("❌ ERROR: Kein Remote-Commit gefunden in API-Response")
                 return False, None, None
             
             # Prüfe ob Remote neuer ist
             update_available = (local_commit != remote_commit) if local_commit else True
             
-            log_info(f"Update verfügbar: {update_available}")
+            if update_available:
+                print(f"✨ Update verfügbar: {remote_commit}")
+            else:
+                print(f"✓ Bereits aktuell: {remote_commit}")
             
             # Info-String erstellen
             commit_info = f"{remote_commit} - {commit_message}"
@@ -109,16 +110,21 @@ class UpdateManager:
         except urllib.error.URLError as e:
             error_msg = f"Netzwerkfehler beim Update-Check: {e.reason if hasattr(e, 'reason') else e}"
             print(f"❌ {error_msg}")
-            log_error(error_msg)
             # Fallback zu Release-Check
+            print("🔄 Versuche Release-Check als Fallback...")
+            return self._check_releases()
+        except json.JSONDecodeError as e:
+            error_msg = f"JSON-Fehler beim Update-Check: {e}"
+            print(f"❌ {error_msg}")
+            print("🔄 Versuche Release-Check als Fallback...")
             return self._check_releases()
         except Exception as e:
             error_msg = f"Fehler beim Prüfen auf Updates (Commits): {type(e).__name__}: {e}"
             print(f"❌ {error_msg}")
-            log_error(error_msg)
             import traceback
             traceback.print_exc()
             # Fallback zu Release-Check
+            print("🔄 Versuche Release-Check als Fallback...")
             return self._check_releases()
     
     def _get_local_commit_hash(self) -> Optional[str]:
@@ -157,37 +163,58 @@ class UpdateManager:
             Tuple (update_available, latest_version, download_url)
         """
         try:
+            print("🔍 Update-Check: Prüfe auf neue Releases...")
+            
             # SSL-Kontext für macOS erstellen (ignoriert Zertifikatsprüfung)
             ssl_context = ssl._create_unverified_context()
             
             # GitHub API abfragen
+            print(f"🌐 Rufe GitHub API ab: {self.GITHUB_API_URL}")
             request = urllib.request.Request(
                 self.GITHUB_API_URL,
                 headers={'User-Agent': 'WerkstattArchiv-Updater'}
             )
             
             with urllib.request.urlopen(request, timeout=10, context=ssl_context) as response:
+                status_code = response.getcode()
+                print(f"✓ HTTP Status: {status_code}")
                 data = json.loads(response.read().decode('utf-8'))
             
             # Version aus Tag extrahieren (z.B. "v0.8.0" -> "0.8.0")
             latest_version = data.get('tag_name', '').lstrip('v')
             
             if not latest_version:
+                print("❌ ERROR: Keine Version in Release gefunden")
                 return False, None, None
+            
+            print(f"📦 Gefundener Release: v{latest_version}")
             
             # Versions-Vergleich
             update_available = self._compare_versions(self.current_version, latest_version)
+            
+            if update_available:
+                print(f"✨ Update verfügbar: v{self.current_version} → v{latest_version}")
+            else:
+                print(f"✓ Bereits aktuell: v{self.current_version}")
             
             # Download-URL für Source Code ZIP
             download_url = data.get('zipball_url')
             
             return update_available, latest_version, download_url
             
+        except urllib.error.HTTPError as e:
+            print(f"❌ HTTP-Fehler beim Update-Check: {e.code} - {e.reason}")
+            return False, None, None
         except urllib.error.URLError as e:
-            print(f"Fehler beim Prüfen auf Updates: {e}")
+            print(f"❌ Netzwerkfehler beim Update-Check: {e.reason if hasattr(e, 'reason') else e}")
+            return False, None, None
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON-Fehler beim Update-Check: {e}")
             return False, None, None
         except Exception as e:
-            print(f"Unerwarteter Fehler beim Update-Check: {e}")
+            print(f"❌ Unerwarteter Fehler beim Update-Check: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return False, None, None
     
     def _compare_versions(self, current: str, latest: str) -> bool:
