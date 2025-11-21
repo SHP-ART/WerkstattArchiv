@@ -577,3 +577,95 @@ Config in: Programm + Basis-Verzeichnis
 [2025-11-20 06:43:07] INFO     | Erstelle Einstellungen-Tab
 [2025-11-20 06:43:07] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
 [2025-11-20 06:43:08] INFO     | Log-System gestartet
+[2025-11-20 18:53:04] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 18:53:04] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 18:53:05] INFO     | Log-System gestartet
+[2025-11-20 18:57:42] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 18:57:42] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:02:49] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 19:02:50] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 19:02:51] INFO     | Log-System gestartet
+[2025-11-20 19:03:03] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 19:03:03] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:07:31] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 19:07:31] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:08:23] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 19:08:23] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 19:08:24] INFO     | Log-System gestartet
+[2025-11-20 19:10:58] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 19:10:58] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 19:10:59] INFO     | Log-System gestartet
+[2025-11-20 19:11:03] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 19:11:03] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:11:14] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251120_191114.db
+[2025-11-20 19:17:23] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 19:17:23] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 19:17:24] INFO     | Log-System gestartet
+[2025-11-20 19:18:08] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 19:18:08] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:18:44] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251120_191844.db
+[2025-11-20 19:26:29] INFO     | Erstelle Einstellungen-Tab
+[2025-11-20 19:26:30] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-20 19:26:31] INFO     | Log-System gestartet
+[2025-11-20 19:26:39] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-20 19:26:39] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-20 19:27:22] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251120_192722.db
+[2025-11-21 05:48:24] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 05:48:24] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 05:48:25] INFO     | Log-System gestartet
+[2025-11-21 05:48:30] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 05:48:30] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 05:48:36] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_054836.db
+[2025-11-21 05:58:12] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 05:58:12] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 05:58:13] INFO     | Log-System gestartet
+[2025-11-21 05:58:17] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 05:58:17] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 05:58:31] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_055831.db
+[2025-11-21 06:01:28] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:01:28] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:01:29] INFO     | Log-System gestartet
+[2025-11-21 06:02:29] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:02:30] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:03:04] INFO     | Anwendung wird beendet
+[2025-11-21 06:07:16] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:07:16] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:07:17] INFO     | Log-System gestartet
+[2025-11-21 06:08:44] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:08:44] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:08:50] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_060850.db
+[2025-11-21 06:11:38] INFO     | Anwendung wird beendet
+[2025-11-21 06:11:58] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:11:59] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:11:59] INFO     | Log-System gestartet
+[2025-11-21 06:12:01] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:12:01] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:12:11] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_061211.db
+[2025-11-21 06:16:21] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:16:21] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:16:22] INFO     | Log-System gestartet
+[2025-11-21 06:16:31] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:16:31] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:16:35] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_061635.db
+[2025-11-21 06:21:18] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:21:18] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:21:19] INFO     | Log-System gestartet
+[2025-11-21 06:21:21] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:21:21] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:21:32] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_062132.db
+[2025-11-21 06:32:32] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:32:32] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:32:33] INFO     | Log-System gestartet
+[2025-11-21 06:49:01] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 06:49:01] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 06:49:02] INFO     | Log-System gestartet
+[2025-11-21 06:49:13] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 06:49:13] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 06:49:30] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_064930.db
+[2025-11-21 07:04:33] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 13:22:48] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 13:22:48] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 13:22:49] INFO     | Log-System gestartet
+[2025-11-21 13:22:51] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
+[2025-11-21 13:22:51] SUCCESS  | Scan abgeschlossen: 1 Dateien gefunden
+[2025-11-21 13:23:19] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_132319.db

@@ -28,26 +28,41 @@ except ImportError:
 # Fehler werden für späteres Logging gespeichert (Logger ist beim Import noch nicht bereit)
 OCR_INIT_ERROR = None
 
+# EasyOCR wird beim Start komplett geladen
 try:
-    import easyocr  # type: ignore
-    from PIL import Image  # type: ignore
-    print("✅ EasyOCR verfügbar - verwende Python-basierte OCR")
-    # Initialisiere Reader mit Deutsch und Englisch
-    # gpu=False für CPU-only (funktioniert überall)
-    easyocr_reader = easyocr.Reader(['de', 'en'], gpu=False, verbose=False)
+    import easyocr
     OCR_AVAILABLE = True
-except ImportError as e:
+    easyocr_reader = None  # Wird beim Start initialisiert
+    print("✓ EasyOCR Modul geladen")
+except ImportError:
     OCR_AVAILABLE = False
     easyocr_reader = None
-    OCR_INIT_ERROR = ("ImportError", "EasyOCR nicht verfügbar. Installiere: pip install easyocr", str(e))
-    print(f"❌ EasyOCR nicht verfügbar. Installiere: pip install easyocr")
-except Exception as e:
-    OCR_AVAILABLE = False
-    easyocr_reader = None
-    import traceback
-    OCR_INIT_ERROR = (type(e).__name__, f"EasyOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
-    print(f"⚠️  EasyOCR Fehler: {e}")
-    print("❌ EasyOCR konnte nicht initialisiert werden")
+    print("⚠️  EasyOCR nicht installiert - nur PDF-Textextraktion aktiv")
+
+
+def init_easyocr_at_startup():
+    """
+    Initialisiert EasyOCR Reader beim Programmstart (blocking).
+    Sollte während der Lade-Animation aufgerufen werden.
+    """
+    global easyocr_reader, OCR_INIT_ERROR
+    
+    if not OCR_AVAILABLE:
+        return False
+    
+    if easyocr_reader is not None:
+        return True  # Bereits initialisiert
+    
+    try:
+        print("🔄 Initialisiere EasyOCR Reader (kann 30-60 Sekunden dauern)...")
+        easyocr_reader = easyocr.Reader(['de', 'en'], gpu=False, verbose=False)
+        print("✅ EasyOCR Reader bereit")
+        return True
+    except Exception as e:
+        import traceback
+        OCR_INIT_ERROR = (type(e).__name__, f"EasyOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
+        print(f"❌ EasyOCR Reader Fehler: {e}")
+        return False
 
 
 def log_ocr_init_error(log_callback):
@@ -598,7 +613,7 @@ def analyze_document(file_path: str,
             "legacy_match_reason": str | None  # NEU: "fin", "name_plus_details", "unclear"
         }
     """
-    from services.logger import log_error, log_info
+    from services.logger import log_error
     
     # Validierung
     if not os.path.exists(file_path):
@@ -622,7 +637,6 @@ def analyze_document(file_path: str,
         }
     
     print(f"🔍 Analysiere: {os.path.basename(file_path)}")
-    log_info(f"Starte Analyse: {file_path}")
     
     # Text extrahieren
     try:
@@ -693,6 +707,15 @@ def analyze_document(file_path: str,
             # Keine eindeutige Zuordnung
             legacy_match_reason = legacy_match.match_reason
             hinweis = f"Legacy-Auftrag unklar: {legacy_match.confidence_detail}"
+    
+    # Fallback: Verwende Auftragsnummer als Kundennummer (mit "A" Präfix)
+    if not kunden_nr and auftrag_nr:
+        kunden_nr = f"A{auftrag_nr}"
+        is_legacy = True
+        legacy_match_reason = "auftrag_as_kunde"
+        if not hinweis:
+            hinweis = f"Kundennr aus Auftragsnr generiert: {kunden_nr}"
+        print(f"   ℹ️  Keine Kundennummer gefunden → Auftragsnummer als Kunde: {kunden_nr}")
     
     # Confidence berechnen
     confidence = calculate_confidence(kunden_nr, auftrag_nr, dokument_typ, jahr)

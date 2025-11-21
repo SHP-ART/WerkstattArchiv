@@ -438,9 +438,16 @@ class MainWindow(ctk.CTk):
             self.after(20, lambda: self._animate_fade_in(alpha))
     
     def init_gui(self):
-        """Initialisiert die GUI-Komponenten - SCHNELLSTART mit Lazy-Loading."""
+        """Initialisiert die GUI-Komponenten - Vollständiger Start mit OCR."""
         start_total = time.time()
-        self.update_loading_progress(0.05, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
+        
+        # SCHRITT 1: EasyOCR laden (falls verfügbar)
+        self.update_loading_progress(0.05, "🔄 Lade OCR-System...", "EasyOCR Modelle (30-60 Sek)")
+        from services.analyzer import init_easyocr_at_startup
+        init_easyocr_at_startup()
+        
+        # SCHRITT 2: Tab-Struktur erstellen
+        self.update_loading_progress(0.5, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
 
         # Tabview erstellen MIT Tracking
         start = time.time()
@@ -482,11 +489,11 @@ class MainWindow(ctk.CTk):
         start = time.time()
         self.create_welcome_tab()
         self.tabs_created["Willkommen"] = True
-        print(f"⏱️  Welcome-Tab: {(time.time() - start) * 1000:.1f}ms")
+        # print(f"⏱️  Welcome-Tab: {(time.time() - start) * 1000:.1f}ms")  # DEAKTIVIERT
 
         # Starte Animation mit Logo (2 Sekunden)
         self.update_loading_progress(0.5, "✅ Bereit!", "")
-        print(f"✓ GUI bereit in {(time.time() - start_total) * 1000:.0f}ms")
+        # print(f"✓ GUI bereit in {(time.time() - start_total) * 1000:.0f}ms")  # DEAKTIVIERT
 
         # Animation läuft 2 Sekunden - DANACH erst Tabs laden
         self._run_logo_animation(duration_ms=2000)
@@ -513,7 +520,7 @@ class MainWindow(ctk.CTk):
     
     def _create_remaining_tabs_async(self):
         """Erstellt verbleibende Tabs asynchron im Hintergrund mit yield."""
-        print("🔄 Lade verbleibende Tabs im Hintergrund...")
+        # print("🔄 Lade verbleibende Tabs im Hintergrund...")  # DEAKTIVIERT
         start_async = time.time()
         
         # Batch-Tab-Erstellung für bessere Performance
@@ -537,13 +544,13 @@ class MainWindow(ctk.CTk):
                     create_func()
                     self.tabs_created[tab_name] = True
                     elapsed = (time.time() - start) * 1000
-                    if elapsed > 50:  # Nur bei langsamen Tabs loggen
-                        print(f"⏱️  {tab_name}: {elapsed:.1f}ms")
+                    # if elapsed > 50:  # Nur bei langsamen Tabs loggen
+                    #     print(f"⏱️  {tab_name}: {elapsed:.1f}ms")  # DEAKTIVIERT - blockiert GUI
                 # Nächster Tab mit delay für bessere Responsiveness
                 # Erhöhte Verzögerung für flüssige UI-Interaktion
                 self.after(100, lambda: load_next_tab(index + 1))
             else:
-                print(f"✓ Hintergrund-Tabs geladen in {(time.time() - start_async) * 1000:.0f}ms")
+                pass  # print(f"✓ Hintergrund-Tabs geladen in {(time.time() - start_async) * 1000:.0f}ms")  # DEAKTIVIERT
         
         # Starte verzögerte Tab-Erstellung
         load_next_tab(0)
@@ -639,7 +646,7 @@ class MainWindow(ctk.CTk):
                 pass
             
             if bound_count > 0:
-                print(f"✓ Tab-Click-Tracking aktiviert ({bound_count} Widgets gebunden)")
+                pass  # print(f"✓ Tab-Click-Tracking aktiviert ({bound_count} Widgets gebunden)")  # DEAKTIVIERT
             else:
                 print("⚠️  Tab-Click-Tracking: Keine Widgets gebunden")
                 
@@ -651,7 +658,7 @@ class MainWindow(ctk.CTk):
     def _on_tab_click(self, event):
         """Wird beim Mausklick auf einen Tab aufgerufen - startet Zeitmessung."""
         self._last_click_time = time.time()
-        print(f"🖱️  Mausklick auf Tab erfasst!")
+        # print(f"🖱️  Mausklick auf Tab erfasst!")  # DEAKTIVIERT - blockiert GUI auf macOS
     
     def _on_tab_change_wrapper(self):
         """Wrapper für Tab-Wechsel - misst Zeit ab Mausklick!"""
@@ -663,11 +670,11 @@ class MainWindow(ctk.CTk):
         # Zeit ab Mausklick berechnen (falls verfügbar)
         if self._last_click_time:
             elapsed_total = (time.time() - self._last_click_time) * 1000
-            print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms (ab Mausklick)")
+            # print(f"⏱️  Tab-Wechsel GESAMT zu '{current_tab}': {elapsed_total:.1f}ms (ab Mausklick)")  # DEAKTIVIERT
             self._last_click_time = None  # Reset
-        else:
+        # else:
             # Fallback wenn kein Click-Event erfasst wurde
-            print(f"⏱️  Tab-Wechsel zu '{current_tab}' (programmgesteuert)")
+            # print(f"⏱️  Tab-Wechsel zu '{current_tab}' (programmgesteuert)")  # DEAKTIVIERT
 
     def on_tab_change(self):
         """Wird aufgerufen wenn ein Tab gewechselt wird."""
@@ -4450,13 +4457,10 @@ class MainWindow(ctk.CTk):
     
     def _process_documents(self):
         """Verarbeitet alle Dokumente im Eingangsordner (läuft in Thread) mit Progress-Feedback."""
-        # Erstelle Progress-Dialog mit benutzerdefiniertem Titel
         files_count = len(self.scanned_files)
-
-        def create_dialog():
-            self.progress_dialog = ProgressDialog(self, f"⚙️ Verarbeite {files_count} Datei(en)...", files_count)
-
-        self.after(0, create_dialog)
+        
+        # KEIN ProgressDialog mehr - nur Inline-Progress-Bar verwenden
+        # ProgressDialog aus Thread zu erstellen verursacht macOS Crash
 
         root_dir = self.config.get("root_dir")
         unclear_dir = self.config.get("unclear_dir")
@@ -4517,13 +4521,8 @@ class MainWindow(ctk.CTk):
         for i, file_path in enumerate(files):
             filename = os.path.basename(file_path)
 
-            # Prüfe ob User Verarbeitung abgebrochen hat
-            if hasattr(self, 'progress_dialog') and self.progress_dialog and self.progress_dialog.is_cancelled():
-                print("⚠️  Verarbeitung abgebrochen vom Benutzer")
-                self.after(0, lambda: self.process_status.configure(text="⚠ Verarbeitung abgebrochen", text_color="orange"))
-                self.after(0, lambda: self._close_progress_dialog())
-                break
-
+            # Kein Abbruch-Check mehr - ProgressDialog wurde entfernt
+            
             try:
                 # Prüfe ob Datei noch existiert
                 if not os.path.exists(file_path):
@@ -4638,6 +4637,12 @@ class MainWindow(ctk.CTk):
                 self.after(0, update_complete)
 
             except Exception as e:
+                # WICHTIG: Fehler auch auf Console ausgeben für Debugging
+                import traceback
+                print(f"❌ FEHLER bei Verarbeitung von {filename}:")
+                print(f"   {type(e).__name__}: {e}")
+                traceback.print_exc()
+                
                 log_error(file_path, str(e))
                 self.document_index.add_document(file_path, file_path, {}, "error")
                 error_count += 1
@@ -4668,8 +4673,7 @@ class MainWindow(ctk.CTk):
         # Automatisches Datenbank-Backup im data-Ordner erstellen
         self._auto_backup_database_to_data()
         
-        # Progress-Dialog schließen
-        self.after(0, lambda: self._close_progress_dialog())
+        # Kein ProgressDialog mehr zu schließen
 
         # Button wieder aktivieren (im Haupt-Thread)
         self.after(0, lambda: self.scan_btn.configure(state="normal"))
