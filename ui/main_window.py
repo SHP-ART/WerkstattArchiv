@@ -441,13 +441,21 @@ class MainWindow(ctk.CTk):
         """Initialisiert die GUI-Komponenten - Vollständiger Start mit OCR."""
         start_total = time.time()
         
-        # SCHRITT 1: EasyOCR laden (falls verfügbar)
-        self.update_loading_progress(0.05, "🔄 Lade OCR-System...", "EasyOCR Modelle (30-60 Sek)")
-        from services.analyzer import init_easyocr_at_startup
-        init_easyocr_at_startup()
+        # SCHRITT 1: EasyOCR im Hintergrund laden (während Animation läuft)
+        self.update_loading_progress(0.05, "🔄 Lade OCR-System...", "EasyOCR Modelle werden geladen...")
         
-        # SCHRITT 2: Tab-Struktur erstellen
-        self.update_loading_progress(0.5, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
+        def load_ocr_in_background():
+            """Lädt EasyOCR im Hintergrund während die Animation läuft."""
+            from services.analyzer import init_easyocr_at_startup
+            init_easyocr_at_startup()
+        
+        # Starte OCR-Laden in Thread
+        import threading
+        ocr_thread = threading.Thread(target=load_ocr_in_background, daemon=True)
+        ocr_thread.start()
+        
+        # SCHRITT 2: Tab-Struktur erstellen (parallel zu OCR-Laden)
+        self.update_loading_progress(0.3, "⚡ Erstelle Tab-Struktur...", "Tabview-System")
 
         # Tabview erstellen MIT Tracking
         start = time.time()

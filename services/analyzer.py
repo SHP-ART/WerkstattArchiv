@@ -339,19 +339,24 @@ def extract_text_from_pdf_ocr(file_path: str) -> str:
             print("⚠️  pdf2image nicht verfügbar. Installiere: pip install pdf2image")
             return ""
         
-        # Konvertiere PDF zu Bildern (nur erste Seite)
-        images = convert_from_path(file_path, first_page=1, last_page=1)
+        # Konvertiere ALLE Seiten zu Bildern
+        images = convert_from_path(file_path)
         text = ""
 
         if len(images) > 0:
+            print(f"ℹ️  PDF-OCR: Analysiere {len(images)} Seite(n)")
             # Speichere temporär als Bild für EasyOCR
             import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                images[0].save(tmp.name, "PNG")
-                result = easyocr_reader.readtext(tmp.name, detail=0, paragraph=True)
-                text = "\n".join(result) if result else ""
-                os.unlink(tmp.name)
-            print(f"ℹ️  PDF-OCR: Analysiere nur Seite 1")
+            
+            # Verarbeite alle Seiten
+            for page_num, image in enumerate(images, 1):
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    image.save(tmp.name, "PNG")
+                    result = easyocr_reader.readtext(tmp.name, detail=0, paragraph=True)
+                    page_text = "\n".join(result) if result else ""
+                    if page_text:
+                        text += f"\n--- Seite {page_num} ---\n{page_text}\n"
+                    os.unlink(tmp.name)
 
         return text
         
@@ -645,11 +650,11 @@ def analyze_document(file_path: str,
             print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
         else:
             print(f"   ⚠️  Kein Text extrahiert!")
-            log_error(f"Keine Textextraktion möglich für {file_path}")
+            log_error(file_path, "Keine Textextraktion möglich")
     except Exception as e:
-        error_msg = f"Textextraktion fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
+        error_msg = f"Textextraktion fehlgeschlagen: {type(e).__name__}: {e}"
         print(f"❌ {error_msg}")
-        log_error(error_msg)
+        log_error(file_path, error_msg)
         import traceback
         traceback.print_exc()
         text = ""
