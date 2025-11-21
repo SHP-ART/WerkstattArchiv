@@ -4681,6 +4681,13 @@ class MainWindow(ctk.CTk):
         
         # Liste leeren
         self.scanned_files = []
+        
+        # Erfolgreich verarbeitete Dateien aus der GUI-Liste entfernen
+        def clear_successful_from_gui():
+            # Lösche nur erfolgreich verarbeitete Einträge aus der Results-Liste
+            for widget in self.results_container.winfo_children():
+                widget.destroy()
+        self.after(0, clear_successful_from_gui)
 
         # Processing-Flag zurücksetzen
         self.is_processing = False
