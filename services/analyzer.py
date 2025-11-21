@@ -54,14 +54,12 @@ def init_easyocr_at_startup():
         return True  # Bereits initialisiert
     
     try:
-        print("🔄 Initialisiere EasyOCR Reader (kann 30-60 Sekunden dauern)...")
+        # KEIN print() - blockiert auf macOS!
         easyocr_reader = easyocr.Reader(['de', 'en'], gpu=False, verbose=False)
-        print("✅ EasyOCR Reader bereit")
         return True
     except Exception as e:
         import traceback
         OCR_INIT_ERROR = (type(e).__name__, f"EasyOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
-        print(f"❌ EasyOCR Reader Fehler: {e}")
         return False
 
 
@@ -344,7 +342,7 @@ def extract_text_from_pdf_ocr(file_path: str) -> str:
         text = ""
 
         if len(images) > 0:
-            print(f"ℹ️  PDF-OCR: Analysiere {len(images)} Seite(n)")
+            # KEIN print() - blockiert macOS!
             # Speichere temporär als Bild für EasyOCR
             import tempfile
             
@@ -386,9 +384,14 @@ def extract_text(file_path: str) -> str:
         # Erst normalen PDF-Text versuchen (Feature 14: returns tuple with page count)
         text, page_count = extract_text_from_pdf(file_path)
 
-        # Falls kein Text gefunden, OCR versuchen
-        if not text.strip():
-            text = extract_text_from_pdf_ocr(file_path)
+        # Falls kein oder zu wenig Text gefunden (< 100 Zeichen), OCR versuchen
+        # Grund: Gescannte PDFs haben oft 0 Zeichen oder nur Metadaten
+        if len(text.strip()) < 100:
+            # KEIN print() - blockiert auf macOS!
+            ocr_text = extract_text_from_pdf_ocr(file_path)
+            # Nutze OCR-Text nur wenn mehr extrahiert wurde
+            if len(ocr_text.strip()) > len(text.strip()):
+                text = ocr_text
 
         return text
 
@@ -623,8 +626,8 @@ def analyze_document(file_path: str,
     # Validierung
     if not os.path.exists(file_path):
         error_msg = f"Datei nicht gefunden: {file_path}"
-        print(f"❌ {error_msg}")
-        log_error(error_msg)
+        # print(f"❌ {error_msg}")  # BLOCKIERT macOS
+        log_error(file_path, error_msg)
         return {
             "kunden_nr": None,
             "kunden_name": None,
@@ -641,19 +644,20 @@ def analyze_document(file_path: str,
             "page_count": 0,
         }
     
-    print(f"🔍 Analysiere: {os.path.basename(file_path)}")
+    # print(f"🔍 Analysiere: {os.path.basename(file_path)}")  # BLOCKIERT macOS
     
     # Text extrahieren
     try:
         text = extract_text(file_path)
-        if text:
-            print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
-        else:
-            print(f"   ⚠️  Kein Text extrahiert!")
+        # KEIN print() mehr - blockiert macOS!
+        # if text:
+        #     print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
+        # else:
+        #     print(f"   ⚠️  Kein Text extrahiert!")
             log_error(file_path, "Keine Textextraktion möglich")
     except Exception as e:
         error_msg = f"Textextraktion fehlgeschlagen: {type(e).__name__}: {e}"
-        print(f"❌ {error_msg}")
+        # print(f"❌ {error_msg}")  # BLOCKIERT macOS
         log_error(file_path, error_msg)
         import traceback
         traceback.print_exc()
@@ -720,7 +724,7 @@ def analyze_document(file_path: str,
         legacy_match_reason = "auftrag_as_kunde"
         if not hinweis:
             hinweis = f"Kundennr aus Auftragsnr generiert: {kunden_nr}"
-        print(f"   ℹ️  Keine Kundennummer gefunden → Auftragsnummer als Kunde: {kunden_nr}")
+        # print(f"   ℹ️  Keine Kundennummer gefunden → Auftragsnummer als Kunde: {kunden_nr}")
     
     # Confidence berechnen
     confidence = calculate_confidence(kunden_nr, auftrag_nr, dokument_typ, jahr)

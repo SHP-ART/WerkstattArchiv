@@ -678,3 +678,7 @@ Config in: Programm + Basis-Verzeichnis
 [2025-11-21 18:31:47] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
 [2025-11-21 18:31:47] SUCCESS  | Scan abgeschlossen: 14 Dateien gefunden
 [2025-11-21 18:40:13] SUCCESS  | Automatisches DB-Backup erstellt | Detail: /Users/shp-art/Documents/Github/WerkstattArchiv_fresh/data/db_backups/werkstatt_index_20251121_184013.db
+[2025-11-21 21:04:18] INFO     | Erstelle Einstellungen-Tab
+[2025-11-21 21:04:18] SUCCESS  | Einstellungen-Tab erstellt (2 Pfad-Felder)
+[2025-11-21 21:04:20] INFO     | Log-System gestartet
+[2025-11-21 21:05:38] INFO     | Starte Scan von Eingangsordner | Detail: /Users/shp-art/Documents/WerkstattArchiv_Test/Eingang
