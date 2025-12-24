@@ -654,7 +654,7 @@ def analyze_document(file_path: str,
         #     print(f"   ✓ Text extrahiert: {len(text)} Zeichen")
         # else:
         #     print(f"   ⚠️  Kein Text extrahiert!")
-            log_error(file_path, "Keine Textextraktion möglich")
+        #     log_error(file_path, "Keine Textextraktion möglich")
     except Exception as e:
         error_msg = f"Textextraktion fehlgeschlagen: {type(e).__name__}: {e}"
         # print(f"❌ {error_msg}")  # BLOCKIERT macOS
