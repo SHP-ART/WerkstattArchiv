@@ -14,8 +14,7 @@ from services.vorlagen import VorlagenManager
 
 # Type-Hints für optionale Imports
 fitz = None
-easyocr = None
-easyocr_reader = None
+paddle_ocr = None
 
 try:
     import fitz  # PyMuPDF
@@ -24,50 +23,55 @@ except ImportError:
     PYMUPDF_AVAILABLE = False
     print("Warnung: PyMuPDF nicht verfügbar. PDF-Textextraktion eingeschränkt.")
 
-# EasyOCR - Python-basierte OCR (keine externe Installation nötig)
+# PaddleOCR - Python-basierte OCR (keine externe Installation nötig)
 # Fehler werden für späteres Logging gespeichert (Logger ist beim Import noch nicht bereit)
 OCR_INIT_ERROR = None
 
-# EasyOCR wird beim Start komplett geladen
+# PaddleOCR wird beim Start komplett geladen
 try:
-    import easyocr
+    from paddleocr import PaddleOCR
     OCR_AVAILABLE = True
-    easyocr_reader = None  # Wird beim Start initialisiert
-    print("✓ EasyOCR Modul geladen")
+    paddle_ocr = None  # Wird beim Start initialisiert
+    print("✓ PaddleOCR Modul geladen")
 except ImportError:
     OCR_AVAILABLE = False
-    easyocr_reader = None
-    print("⚠️  EasyOCR nicht installiert - nur PDF-Textextraktion aktiv")
+    paddle_ocr = None
+    print("⚠️  PaddleOCR nicht installiert - nur PDF-Textextraktion aktiv")
 
 
-def init_easyocr_at_startup():
+def init_paddleocr_at_startup():
     """
-    Initialisiert EasyOCR Reader beim Programmstart (blocking).
+    Initialisiert PaddleOCR beim Programmstart (blocking).
     Sollte während der Lade-Animation aufgerufen werden.
     """
-    global easyocr_reader, OCR_INIT_ERROR
-    
+    global paddle_ocr, OCR_INIT_ERROR
+
     if not OCR_AVAILABLE:
         return False
-    
-    if easyocr_reader is not None:
+
+    if paddle_ocr is not None:
         return True  # Bereits initialisiert
-    
+
     try:
         # KEIN print() - blockiert auf macOS!
-        easyocr_reader = easyocr.Reader(['de', 'en'], gpu=False, verbose=False)
+        paddle_ocr = PaddleOCR(use_angle_cls=True, lang='german', use_gpu=False, show_log=False)
         return True
     except Exception as e:
         import traceback
-        OCR_INIT_ERROR = (type(e).__name__, f"EasyOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
+        OCR_INIT_ERROR = (type(e).__name__, f"PaddleOCR Fehler: {type(e).__name__}: {e}", traceback.format_exc())
         return False
+
+
+# Rückwärtskompatibilität: alter Name wird weitergeleitet
+def init_easyocr_at_startup():
+    return init_paddleocr_at_startup()
 
 
 def log_ocr_init_error(log_callback):
     """
-    Schreibt EasyOCR-Initialisierungsfehler ins Log.
+    Schreibt PaddleOCR-Initialisierungsfehler ins Log.
     Sollte aufgerufen werden, nachdem das Log-System bereit ist.
-    
+
     Args:
         log_callback: Callback-Funktion (typ, message) für UI-Log
     """
@@ -75,17 +79,17 @@ def log_ocr_init_error(log_callback):
     if OCR_INIT_ERROR:
         try:
             error_type, error_msg, details = OCR_INIT_ERROR
-            
+
             # Schreibe ins UI-Log
-            log_callback("ERROR", f"EasyOCR: {error_msg}")
-            
+            log_callback("ERROR", f"PaddleOCR: {error_msg}")
+
             # Bei nicht-ImportError auch Details schreiben
             if error_type != "ImportError" and details:
                 # Erste Zeile des Tracebacks
                 first_line = details.split('\n')[0]
                 log_callback("ERROR", f"Details: {first_line}")
         except Exception as e:
-            print(f"Konnte EasyOCR-Fehler nicht loggen: {e}")
+            print(f"Konnte PaddleOCR-Fehler nicht loggen: {e}")
 
 
 # PatternManager für konfigurierbare Regex-Patterns
@@ -284,24 +288,34 @@ def get_pdf_page_count(file_path: str) -> int:
         return 0
 
 
+def _paddle_result_to_text(result) -> str:
+    """Wandelt PaddleOCR-Ergebnis in einen einfachen String um."""
+    if not result or not result[0]:
+        return ""
+    lines = []
+    for line in result[0]:
+        if line and len(line) >= 2 and line[1]:
+            lines.append(line[1][0])
+    return "\n".join(lines)
+
+
 def extract_text_from_image_ocr(file_path: str) -> str:
     """
-    Extrahiert Text aus einem Bild mittels EasyOCR.
-    
+    Extrahiert Text aus einem Bild mittels PaddleOCR.
+
     Args:
         file_path: Pfad zur Bilddatei
-        
+
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
-    if not OCR_AVAILABLE or easyocr_reader is None:
+    if not OCR_AVAILABLE or paddle_ocr is None:
         return ""
-    
+
     try:
-        result = easyocr_reader.readtext(file_path, detail=0, paragraph=True)
-        text = "\n".join(result) if result else ""
-        return text
-        
+        result = paddle_ocr.ocr(file_path, cls=True)
+        return _paddle_result_to_text(result)
+
     except Exception as e:
         from services.logger import log_error
         error_msg = f"Bild-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
@@ -314,7 +328,7 @@ def extract_text_from_image_ocr(file_path: str) -> str:
 
 def extract_text_from_pdf_ocr(file_path: str) -> str:
     """
-    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei mittels EasyOCR (für gescannte PDFs).
+    Extrahiert Text aus der ERSTEN SEITE einer PDF-Datei mittels PaddleOCR (für gescannte PDFs).
 
     WICHTIG: Es wird nur die erste Seite analysiert, da die relevanten
     Informationen (Kundennummer, Auftragsnummer, etc.) dort stehen.
@@ -326,7 +340,7 @@ def extract_text_from_pdf_ocr(file_path: str) -> str:
     Returns:
         Extrahierter Text oder leerer String bei Fehler
     """
-    if not OCR_AVAILABLE or easyocr_reader is None:
+    if not OCR_AVAILABLE or paddle_ocr is None:
         return ""
 
     try:
@@ -336,28 +350,26 @@ def extract_text_from_pdf_ocr(file_path: str) -> str:
         except ImportError:
             print("⚠️  pdf2image nicht verfügbar. Installiere: pip install pdf2image")
             return ""
-        
+
         # Konvertiere ALLE Seiten zu Bildern
         images = convert_from_path(file_path)
         text = ""
 
         if len(images) > 0:
-            # KEIN print() - blockiert macOS!
-            # Speichere temporär als Bild für EasyOCR
             import tempfile
-            
+
             # Verarbeite alle Seiten
             for page_num, image in enumerate(images, 1):
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     image.save(tmp.name, "PNG")
-                    result = easyocr_reader.readtext(tmp.name, detail=0, paragraph=True)
-                    page_text = "\n".join(result) if result else ""
+                    result = paddle_ocr.ocr(tmp.name, cls=True)
+                    page_text = _paddle_result_to_text(result)
                     if page_text:
                         text += f"\n--- Seite {page_num} ---\n{page_text}\n"
                     os.unlink(tmp.name)
 
         return text
-        
+
     except Exception as e:
         from services.logger import log_error
         error_msg = f"PDF-OCR fehlgeschlagen für {os.path.basename(file_path)}: {type(e).__name__}: {e}"
