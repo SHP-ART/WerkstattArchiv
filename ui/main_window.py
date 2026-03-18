@@ -220,19 +220,6 @@ class MainWindow(ctk.CTk):
         self._search_doc_types = []
         self._search_years = []
         
-        # Tab-Erstellungs-Flags (Lazy Loading)
-        self.tabs_created = {
-            "Einstellungen": False,
-            "Verarbeitung": False,
-            "Suche": False,
-            "Unklare Dokumente": False,
-            "Unklare Legacy-Aufträge": False,
-            "Virtuelle Kunden": False,
-            "Regex-Patterns": False,
-            "System": False,
-            "Logs": False
-        }
-
         # Tab-Erstellungs-Tracking (Lazy-Loading)
         self.tabs_created = {
             "Willkommen": False,
@@ -4248,6 +4235,29 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("Fehler",
                                "Eingangsordner nicht gefunden. Bitte Einstellungen prüfen.")
             return
+
+        # Dateien im Eingangsordner zählen für Bestätigungs-Dialog
+        supported_ext = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp")
+        try:
+            file_count = sum(
+                1 for f in os.listdir(input_dir)
+                if os.path.isfile(os.path.join(input_dir, f)) and f.lower().endswith(supported_ext)
+            )
+        except Exception:
+            file_count = 0
+
+        if file_count == 0:
+            messagebox.showinfo("Keine Dateien", "Im Eingangsordner wurden keine Dokumente gefunden.")
+            return
+
+        if file_count > 10:
+            confirm = messagebox.askyesno(
+                "Scan bestätigen",
+                f"Es wurden {file_count} Dateien im Eingangsordner gefunden.\n\n"
+                f"Sollen alle Dateien jetzt verarbeitet werden?"
+            )
+            if not confirm:
+                return
 
         # Setze Scanning-Flag
         self.is_scanning = True

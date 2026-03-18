@@ -5,6 +5,7 @@ Extrahiert Text aus PDFs und Bildern und analysiert Metadaten.
 
 import re
 import os
+import atexit
 from typing import Dict, Optional, Any
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -103,6 +104,7 @@ except Exception as e:
 # OCR Thread Pool Executor (max 2 parallel OCR jobs)
 # Verhindert, dass 10 OCR-Jobs gleichzeitig laufen und System überlasten
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="OCR-Worker")
+atexit.register(OCR_EXECUTOR.shutdown, wait=False)  # Sauberes Herunterfahren
 
 # Cache für kompilierte Regex-Patterns (Feature 11: Pattern Compilation Caching)
 _COMPILED_PATTERNS_CACHE = {}
@@ -174,6 +176,12 @@ PATTERN_FIN = r"\b([A-HJ-NPR-Z0-9]{17})\b"
 # Kundenname: Vor- und Nachname (Großbuchstaben am Anfang)
 # Format: "Name: Max Mustermann" oder eigenständig "Max Mustermann"
 PATTERN_KUNDENNAME = r"(?:Name[:\s]+)?([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)"
+
+# PLZ: 5-stellige deutsche Postleitzahl
+PATTERN_PLZ = r"(?:PLZ|Postleitzahl)?[\s:]*\b(\d{5})\b"
+
+# Straße: Gängige Straßenbezeichnungen mit Hausnummer
+PATTERN_STRASSE = r"([A-ZÄÖÜ][a-zA-ZäöüÄÖÜß\-]+(?:str(?:aße|asse)?|allee|weg|ring|platz|gasse|damm|chaussee|avenue)\s*\d+[a-z]?)"
 
 # Dokumenttyp-Keywords
 DOCTYPE_KEYWORDS = {
@@ -351,22 +359,18 @@ def extract_text_from_pdf_ocr(file_path: str) -> str:
             print("⚠️  pdf2image nicht verfügbar. Installiere: pip install pdf2image")
             return ""
 
-        # Konvertiere ALLE Seiten zu Bildern
-        images = convert_from_path(file_path)
+        # Konvertiere NUR die erste Seite zu einem Bild (spart Speicher bei mehrseitigen PDFs)
+        images = convert_from_path(file_path, first_page=1, last_page=1)
         text = ""
 
-        if len(images) > 0:
+        if images:
             import tempfile
 
-            # Verarbeite alle Seiten
-            for page_num, image in enumerate(images, 1):
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    image.save(tmp.name, "PNG")
-                    result = paddle_ocr.ocr(tmp.name, cls=True)
-                    page_text = _paddle_result_to_text(result)
-                    if page_text:
-                        text += f"\n--- Seite {page_num} ---\n{page_text}\n"
-                    os.unlink(tmp.name)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                images[0].save(tmp.name, "PNG")
+                result = paddle_ocr.ocr(tmp.name, cls=True)
+                text = _paddle_result_to_text(result)
+                os.unlink(tmp.name)
 
         return text
 
@@ -520,6 +524,26 @@ def extract_kundenname(text: str) -> Optional[str]:
                 if len(words) >= 2:
                     return line
 
+    return None
+
+
+def extract_plz(text: str) -> Optional[str]:
+    """Extrahiert die Postleitzahl (5-stellig) aus dem Text."""
+    pattern = _get_compiled_pattern("plz", PATTERN_PLZ)
+    if not pattern:
+        return None
+    match = pattern.search(text)
+    return match.group(1) if match else None
+
+
+def extract_strasse(text: str) -> Optional[str]:
+    """Extrahiert die Straße (inkl. Hausnummer) aus dem Text."""
+    pattern = _get_compiled_pattern("strasse", PATTERN_STRASSE)
+    if not pattern:
+        return None
+    match = pattern.search(text)
+    if match:
+        return match.group(1).strip()
     return None
 
 
@@ -700,6 +724,8 @@ def analyze_document(file_path: str,
     kunden_name = extract_kundenname(text)
     kennzeichen = extract_kennzeichen(text)
     fin = extract_fin(text)
+    plz = extract_plz(text)
+    strasse = extract_strasse(text)
     
     # NEU: Legacy-Workflow - Falls keine Kundennummer gefunden
     is_legacy = False
@@ -715,8 +741,8 @@ def analyze_document(file_path: str,
             "kunden_name": kunden_name,
             "fin": fin,
             "kennzeichen": kennzeichen,
-            "plz": None,  # TODO: PLZ-Extraktion hinzufügen falls benötigt
-            "adresse": None  # TODO: Adress-Extraktion hinzufügen falls benötigt
+            "plz": plz,
+            "adresse": strasse
         })
         
         if legacy_match.kunden_nr:

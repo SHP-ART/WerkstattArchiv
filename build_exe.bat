@@ -40,9 +40,14 @@ pyinstaller --noconfirm --onefile --windowed ^
     --name "WerkstattArchiv" ^
     --icon=NONE ^
     --add-data "config.json;." ^
+    --add-data "patterns.json;." ^
     --add-data "kunden_beispiel.csv;." ^
     --hidden-import "customtkinter" ^
     --hidden-import "PIL._tkinter_finder" ^
+    --hidden-import "fitz" ^
+    --hidden-import "pymupdf" ^
+    --hidden-import "paddleocr" ^
+    --hidden-import "watchdog.observers.polling" ^
     main.py
 
 if %errorLevel% neq 0 (
@@ -56,6 +61,7 @@ echo [3/3] Kopiere zusaetzliche Dateien...
 if not exist dist\WerkstattArchiv mkdir dist\WerkstattArchiv
 copy dist\WerkstattArchiv.exe dist\WerkstattArchiv\ >nul
 copy config.json dist\WerkstattArchiv\ >nul
+copy patterns.json dist\WerkstattArchiv\ >nul
 copy kunden_beispiel.csv dist\WerkstattArchiv\ >nul
 copy README.md dist\WerkstattArchiv\ >nul 2>nul
 

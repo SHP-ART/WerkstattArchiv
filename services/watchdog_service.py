@@ -79,13 +79,17 @@ class DocumentHandler(FileSystemEventHandler):
                 print(f"⚠️  Datei existiert nicht mehr: {file_path}")
                 return
             
-            # Prüfen ob Datei vollständig (versuche zu öffnen)
+            # Prüfen ob Datei vollständig geschrieben (Größe muss stabil sein)
             try:
-                with open(file_path, 'rb') as f:
-                    f.read(1)  # Teste Lesezugriff
+                size_before = os.path.getsize(file_path)
+                time.sleep(0.5)
+                size_after = os.path.getsize(file_path)
+                if size_before != size_after:
+                    # Datei wächst noch – nochmals warten
+                    time.sleep(2)
             except (IOError, PermissionError) as e:
                 print(f"⚠️  Datei noch nicht bereit: {file_path} - {e}")
-                time.sleep(1)  # Zusätzliche Wartezeit
+                time.sleep(1)
             
             # Callback aufrufen
             print(f"📄 Neue Datei erkannt: {os.path.basename(file_path)}")

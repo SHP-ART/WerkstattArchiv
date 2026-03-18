@@ -258,7 +258,7 @@ class CustomerManager:
             os.makedirs(os.path.dirname(self.customers_file), exist_ok=True)
             
             with open(self.customers_file, "w", encoding="utf-8", newline="") as f:
-                writer = csv.writer(f, delimiter=";")
+                writer = csv.writer(f, delimiter=";", quoting=csv.QUOTE_ALL)
                 
                 # Header schreiben
                 writer.writerow(["kunden_nr", "name", "plz", "ort", "strasse", "telefon"])
